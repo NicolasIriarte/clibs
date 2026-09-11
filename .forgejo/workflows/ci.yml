@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # A tag is what publishes a release; the release job below waits on the test job even for a tag.
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install just
+        run: curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+      - name: Build and run every library's example
+        run: just test
+
+      - name: Check packaging, without a tag involved
+        run: just test_package
+
+  # Publishes the release a tag names: one tarball per library, and the changelog's own words about it.
+  release:
+    needs: [test]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install just
+        run: curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+      # Before packaging anything: a tag whose version was never written down should fail here rather
+      # than publish a release with an empty page, which nobody will go back and fix.
+      - name: The changelog has something to say about this version
+        run: bash/changelog_section "${{ github.ref_name }}" > /tmp/release-notes.md
+
+      - name: Package every library
+        run: just package_all "${{ github.ref_name }}" dist
+
+      - name: Publish the release
+        env:
+          # Forgejo provides GITHUB_TOKEN for checkout; whether it may create a release depends on the
+          # instance. CLIBS_RELEASE_TOKEN overrides it where it may not -- set it in the repository's
+          # Actions secrets if this step is refused.
+          TOKEN: ${{ secrets.CLIBS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          api="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
+
+          # The body is the changelog's section, JSON-encoded by python rather than by hand: release
+          # notes are prose with quotes and newlines in them, and a hand-rolled escape gets that wrong
+          # exactly once and then publishes something unreadable.
+          body="$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[1], "body": open("/tmp/release-notes.md").read()}))' "$TAG")"
+
+          id="$(printf '%s' "$body" \
+            | curl -sf -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+                   --data @- "$api/releases" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
+          echo "Created release $TAG (id $id). Attaching:"
+          for file in dist/*; do
+            echo "  $(basename "$file")"
+            curl -sf -X POST -H "Authorization: token $TOKEN" \
+                 -F "attachment=@${file}" \
+                 "$api/releases/${id}/assets?name=$(basename "$file")" > /dev/null
+          done
