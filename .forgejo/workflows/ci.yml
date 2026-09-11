@@ -9,6 +9,10 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Everything below runs with only apt and this repository -- no other network fetch, since this
+  # runner's CI network does not have open internet access (a plain `curl` to an arbitrary host is
+  # refused). `just` stays a local-development convenience; CI runs the same commands directly instead
+  # of fetching it.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -16,17 +20,50 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install dependencies
+      - name: Install a C compiler
         run: |
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends build-essential curl ca-certificates
-          curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          apt-get install -y -qq --no-install-recommends build-essential
 
       - name: Build and run every library's example
-        run: just test
+        run: |
+          set -euo pipefail
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          cc -std=c11 -Wall -Wextra -Werror -Ilogger logger/examples/minimal.c -o "$work/logger"
+          "$work/logger" >/dev/null
+          echo "ok   logger"
+
+          bash bash-logger/examples/minimal.sh >/dev/null
+          echo "ok   bash-logger"
+
+          testing/gen_test_registry testing/examples/minimal "$work/testsuite_registry.h"
+          cc -std=c11 -Wall -Wextra -Werror -I"$work" -Itesting -Ilogger \
+            testing/examples/minimal/main.c testing/examples/minimal/1_addition.c testing/testsuite.c \
+            -o "$work/testing"
+          "$work/testing" >/dev/null
+          echo "ok   testing"
 
       - name: Check packaging, without a tag involved
-        run: just test_package
+        run: |
+          set -euo pipefail
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          for lib in logger bash-logger testing; do
+            tar --transform "s,^$lib,$lib-v9.9.9," -czf "$work/$lib-v9.9.9.tar.gz" "$lib"
+
+            listing="$(tar -tzf "$work/$lib-v9.9.9.tar.gz")"
+            echo "$listing" | grep -qx "$lib-v9.9.9/README.md" \
+              || { echo "$lib-v9.9.9.tar.gz is missing its README"; exit 1; }
+            echo "$listing" | grep -q "$lib-v9.9.9/examples/" \
+              || { echo "$lib-v9.9.9.tar.gz is missing its examples/"; exit 1; }
+
+            echo "ok   $lib-v9.9.9.tar.gz"
+          done
 
   # Publishes the release a tag names: one tarball per library, and the changelog's own words about it.
   release:
@@ -41,8 +78,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends curl ca-certificates python3
-          curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+          apt-get install -y -qq --no-install-recommends python3 curl ca-certificates
 
       # Before packaging anything: a tag whose version was never written down should fail here rather
       # than publish a release with an empty page, which nobody will go back and fix.
@@ -50,7 +86,14 @@ jobs:
         run: bash/changelog_section "${{ github.ref_name }}" > /tmp/release-notes.md
 
       - name: Package every library
-        run: just package_all "${{ github.ref_name }}" dist
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for lib in logger bash-logger testing; do
+            tar --transform "s,^$lib,$lib-${{ github.ref_name }}," \
+                -czf "dist/$lib-${{ github.ref_name }}.tar.gz" "$lib"
+            echo "wrote dist/$lib-${{ github.ref_name }}.tar.gz"
+          done
 
       - name: Publish the release
         env:
