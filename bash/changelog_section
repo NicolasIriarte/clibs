@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# Prints the CHANGELOG.md section for one version, for a release to be announced with.
+#
+# Usage: bash/changelog_section <version> [changelog-path]
+#          e.g. bash/changelog_section v0.2.0
+#
+# Exits 0 having printed the section, or 1 having printed nothing if that version has no section.
+#
+# Refusing is the point. A release with packages attached and no notes is one nobody can decide whether
+# to install, and it will not be fixed after the fact -- so a tag whose version was never written down
+# should fail the build rather than publish an empty page.
+
+set -euo pipefail
+
+VERSION="${1:?usage: changelog_section <version> [changelog-path]}"
+CHANGELOG="${2:-CHANGELOG.md}"
+
+[[ -f "$CHANGELOG" ]] || {
+	printf 'changelog_section: %s does not exist\n' "$CHANGELOG" >&2
+	exit 1
+}
+
+# Tags are written v0.2.0; the changelog heading is `## [0.2.0] - <date>`. Accept either spelling here
+# so a caller does not have to remember which side of the boundary it is on.
+WANTED="${VERSION#v}"
+
+# A tag may be a revision of a release rather than a release: v0.2.0-1 is v0.2.0, cut again because
+# something was wrong. There is no `## [0.2.0-1]` section and there never will be, so a revision falls
+# back to the version it is a revision of -- which is the release it announces.
+#
+# The base is only used when the full tag names nothing, so a version that really does have its own
+# section always wins.
+BASE="${WANTED%%-*}"
+
+# The section for one version, or nothing.
+__section_for() {
+	local wanted="$1"
+
+	awk -v wanted="$wanted" '
+		# A version heading: "## [0.2.0] - 2026-09-11", or "## [0.2.0]".
+		/^## \[/ {
+			# Pull out whatever sits between the brackets.
+			line = $0
+			sub(/^## \[/, "", line)
+			sub(/\].*$/, "", line)
+
+			if (line == wanted) { printing = 1; next }
+			if (printing) { exit }
+			next
+		}
+		printing { print }
+	' "$CHANGELOG"
+}
+
+section="$(__section_for "$WANTED")"
+
+if [[ -z "${section//[[:space:]]/}" && "$BASE" != "$WANTED" ]]; then
+	section="$(__section_for "$BASE")"
+	if [[ -n "${section//[[:space:]]/}" ]]; then
+		printf 'changelog_section: %s is a revision of %s; using its notes.\n' "$WANTED" "$BASE" >&2
+	fi
+fi
+
+if [[ -z "${section//[[:space:]]/}" ]]; then
+	printf 'changelog_section: no section for version %s in %s\n' "$WANTED" "$CHANGELOG" >&2
+	exit 1
+fi
+
+# Strip the blank lines a section picks up at either end, so the release body does not begin with them.
+section="$(printf '%s' "$section" | sed -e '/./,$!d' -e ':a' -e '/^\n*$/{$d;N;ba' -e '}')"
+
+printf '%s\n' "$section"

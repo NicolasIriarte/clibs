@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # A tag is what publishes a release; the release job below waits on the test job even for a tag.
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Everything below runs with only apt and this repository -- no other network fetch, since this
+  # runner's CI network does not have open internet access (a plain `curl` to an arbitrary host is
+  # refused). `just` stays a local-development convenience; CI runs the same commands directly instead
+  # of fetching it.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install a C compiler
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends build-essential
+
+      - name: Build and run every library's example
+        run: |
+          set -euo pipefail
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          cc -std=c11 -Wall -Wextra -Werror -Ilogger logger/examples/minimal.c -o "$work/logger"
+          "$work/logger" >/dev/null
+          echo "ok   logger"
+
+          bash bash-logger/examples/minimal.sh >/dev/null
+          echo "ok   bash-logger"
+
+          testing/gen_test_registry testing/examples/minimal "$work/testsuite_registry.h"
+          cc -std=c11 -Wall -Wextra -Werror -I"$work" -Itesting -Ilogger \
+            testing/examples/minimal/main.c testing/examples/minimal/1_addition.c testing/testsuite.c \
+            -o "$work/testing"
+          "$work/testing" >/dev/null
+          echo "ok   testing"
+
+      - name: Check packaging, without a tag involved
+        run: |
+          set -euo pipefail
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          for lib in logger bash-logger testing; do
+            tar --transform "s,^$lib,$lib-v9.9.9," -czf "$work/$lib-v9.9.9.tar.gz" "$lib"
+
+            listing="$(tar -tzf "$work/$lib-v9.9.9.tar.gz")"
+            echo "$listing" | grep -qx "$lib-v9.9.9/README.md" \
+              || { echo "$lib-v9.9.9.tar.gz is missing its README"; exit 1; }
+            echo "$listing" | grep -q "$lib-v9.9.9/examples/" \
+              || { echo "$lib-v9.9.9.tar.gz is missing its examples/"; exit 1; }
+
+            echo "ok   $lib-v9.9.9.tar.gz"
+          done
+
+  # Publishes the release a tag names: one tarball per library, and the changelog's own words about it.
+  release:
+    needs: [test]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends python3 curl ca-certificates
+
+      # Before packaging anything: a tag whose version was never written down should fail here rather
+      # than publish a release with an empty page, which nobody will go back and fix.
+      - name: The changelog has something to say about this version
+        run: bash/changelog_section "${{ github.ref_name }}" > /tmp/release-notes.md
+
+      - name: Package every library
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for lib in logger bash-logger testing; do
+            tar --transform "s,^$lib,$lib-${{ github.ref_name }}," \
+                -czf "dist/$lib-${{ github.ref_name }}.tar.gz" "$lib"
+            echo "wrote dist/$lib-${{ github.ref_name }}.tar.gz"
+          done
+
+      - name: Publish the release
+        env:
+          # Forgejo provides GITHUB_TOKEN for checkout; whether it may create a release depends on the
+          # instance. CLIBS_RELEASE_TOKEN overrides it where it may not -- set it in the repository's
+          # Actions secrets if this step is refused.
+          TOKEN: ${{ secrets.CLIBS_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          api="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
+
+          # The body is the changelog's section, JSON-encoded by python rather than by hand: release
+          # notes are prose with quotes and newlines in them, and a hand-rolled escape gets that wrong
+          # exactly once and then publishes something unreadable.
+          body="$(python3 -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": sys.argv[1], "body": open("/tmp/release-notes.md").read()}))' "$TAG")"
+
+          id="$(printf '%s' "$body" \
+            | curl -sf -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+                   --data @- "$api/releases" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+
+          echo "Created release $TAG (id $id). Attaching:"
+          for file in dist/*; do
+            echo "  $(basename "$file")"
+            curl -sf -X POST -H "Authorization: token $TOKEN" \
+                 -F "attachment=@${file}" \
+                 "$api/releases/${id}/assets?name=$(basename "$file")" > /dev/null
+          done
