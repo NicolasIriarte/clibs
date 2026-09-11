@@ -16,8 +16,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install just
-        run: curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends build-essential curl ca-certificates
+          curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
       - name: Build and run every library's example
         run: just test
@@ -35,8 +38,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install just
-        run: curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+      - name: Install dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends curl ca-certificates python3
+          curl -fsSL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 
       # Before packaging anything: a tag whose version was never written down should fail here rather
       # than publish a release with an empty page, which nobody will go back and fix.
