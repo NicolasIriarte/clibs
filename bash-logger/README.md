@@ -30,6 +30,12 @@ See [`examples/minimal.sh`](examples/minimal.sh) for a runnable version.
 There is no `log_base`: that exists in the C logger to print without decoration, which in bash is just
 `printf`.
 
+## Version
+
+`logger.bashrc` exports `LOGGER_VERSION`, a string naming the release of CLibs this copy was cut from
+(e.g. `"0.1.0"`), and its own top-of-file comment names this repository -- so a consumer who only has the
+dropped-in file can still tell what it is and which version it's running.
+
 ## Configuration
 
 Every color and `log_misc` knob has a default. Export a variable before sourcing `logger.bashrc` to

@@ -13,4 +13,6 @@ Cuts vX.Y.Z. The scope is whatever is merged to `main` and unreleased at the poi
 # Tasks
 
 - [ ] Rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD`, and open a fresh `[Unreleased]` above it.
+- [ ] Bump `LOGGER_VERSION` (`logger/logger.h`, `bash-logger/logger.bashrc`) and `TESTSUITE_VERSION`
+      (`testing/testsuite.h`) to `X.Y.Z`.
 - [ ] Merge the PR, tag the merge commit `vX.Y.Z`, and push the tag.

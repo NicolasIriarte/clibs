@@ -7,6 +7,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Each library now exposes its own version to consumers: `LOGGER_VERSION` (`logger.h` and
+  `logger.bashrc`) and `TESTSUITE_VERSION` (`testsuite.h`), plus a top-of-file header naming this
+  repository, so a dropped-in copy can be identified on its own (#5).
+
 ## [0.1.0] - 2026-09-11
 
 ### Added

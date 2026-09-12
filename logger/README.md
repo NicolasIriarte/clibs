@@ -35,6 +35,12 @@ See [`examples/minimal.c`](examples/minimal.c) for a runnable version, including
 
 Each level is gated by an `..._ENABLED` flag and can be compiled out entirely.
 
+## Version
+
+`logger.h` defines `LOGGER_VERSION`, a string naming the release of CLibs this copy was cut from (e.g.
+`"0.1.0"`), and its own top-of-file comment names this repository -- so a consumer who only has the
+dropped-in file can still tell what it is and which version it's running.
+
 ## Configuration
 
 Every knob has a default and works out of the box. To override one, add a `logger_config.h` anywhere on

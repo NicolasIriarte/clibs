@@ -1,6 +1,9 @@
 #pragma once
 
 /**
+ * testsuite.h -- part of CLibs (<forgejo-url>/nico/CLibs). See TESTSUITE_VERSION below for the exact
+ * release this copy was cut from.
+ *
  * A small user-story-based test runner for C.
  *
  * Tests are grouped into "user stories", one per file, registered automatically from the file's leading
@@ -23,6 +26,9 @@ extern "C" {
 #endif
 
 //- Macros constants
+
+/** @brief: Which release of CLibs this copy of testsuite.h was cut from. Not a knob. */
+#define TESTSUITE_VERSION "0.1.0"
 
 #define FORCE_FAILURE() return __LINE__
 

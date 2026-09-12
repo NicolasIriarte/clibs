@@ -1,6 +1,9 @@
 #!/bin/bash
 
 ###################################################################################################################
+# logger.bashrc -- part of CLibs (<forgejo-url>/nico/CLibs). See LOGGER_VERSION below for the exact
+# release this copy was cut from.
+#
 # A small level-gated logger for bash scripts. The bash half of ../logger/logger.h -- same function names, same
 # level prefixes, same "[LEVEL] [file:line] - message" shape, and the same printf-style calling convention, so a
 # script and a source file report the same thing the same way.
@@ -11,6 +14,9 @@
 # There is no log_base here and none is wanted: it exists in the C logger to print without decoration, which is
 # what plain printf already is.
 ###################################################################################################################
+
+# Not a knob: which release of CLibs this copy was cut from, for a consumer that needs to know what it's running.
+export LOGGER_VERSION="0.1.0"
 
 export COLOR_SEAGREEN="${COLOR_SEAGREEN:-\x1b[38;2;0;182;182m}" # RGB color #00b6b6
 export COLOR_DEFAULT="${COLOR_DEFAULT:-\x1b[0m}"

@@ -93,6 +93,12 @@ entrypoint) and the exact commands to build and run them.
 A case receives a `const TestArguments *` with one field, `tmp_dir`: a private, already-empty directory
 it may write to, removed and recreated before every case runs.
 
+## Version
+
+`testsuite.h` defines `TESTSUITE_VERSION`, a string naming the release of CLibs this copy was cut from
+(e.g. `"0.1.0"`), and its own top-of-file comment names this repository -- so a consumer who only has the
+dropped-in files can still tell what it is and which version it's running.
+
 ## Configuration
 
 Two environment variables, both optional:

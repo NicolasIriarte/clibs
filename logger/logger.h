@@ -1,6 +1,9 @@
 #pragma once
 
 /**
+ * logger.h -- part of CLibs (<forgejo-url>/nico/CLibs). See LOGGER_VERSION below for the exact release
+ * this copy was cut from.
+ *
  * A small level-gated logger, with a `_Generic`-based variable printer.
  *
  * Standalone on purpose: drop this file into another project and it compiles as-is, with every knob
@@ -26,6 +29,12 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+
+/* ---------------------------------------------------------------------------
+ * Version. Not a knob, and not overridable from logger_config.h: this is which release of CLibs this
+ * copy of logger.h was cut from, for a consumer that needs to know what it's running.
+ * ------------------------------------------------------------------------- */
+#define LOGGER_VERSION "0.1.0"
 
 /* ---------------------------------------------------------------------------
  * Defaults. Every one of these is overridable from logger_config.h.
