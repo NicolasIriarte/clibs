@@ -71,9 +71,34 @@ typedef struct {
 typedef int (*TestSignature)(const TestArguments *);
 typedef struct UserStory UserStory;
 
+/** @brief: One allocation for the suite's own bookkeeping (the story table, the report table, the
+ * scratch arena). Every such allocation lives for the whole run and is never freed, so this is
+ * deliberately alloc-only. */
+typedef void *(*TestAllocFn)(size_t bytes, void *context);
+
+typedef struct {
+  /** @brief: Called for every bookkeeping allocation the suite makes. `NULL` uses the standard heap
+   * (`malloc`). */
+  TestAllocFn alloc;
+  /** @brief: Passed through to `alloc` untouched -- room for an arena, a driver handle, or whatever the
+   * allocator needs to do its job. */
+  void *context;
+} TestAllocator;
+
 //- Public functions
 
 UserStory *__get_next_user_story(const char *fileName);
+
+/**
+ * @brief Overrides how the suite allocates its own bookkeeping memory (the story table, the report
+ * table, the scratch arena), so it can run somewhere that has no heap to call `malloc` on.
+ *
+ * Must be called before the first case registers -- that registration is what triggers the first
+ * allocation, and this only affects allocations made after it is called.
+ *
+ * @param[in] allocator The allocator to use. Passing `{ .alloc = NULL }` restores the default (`malloc`).
+ */
+void test_set_allocator(TestAllocator allocator);
 
 void __add_test_case(
   UserStory *us,

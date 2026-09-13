@@ -46,6 +46,13 @@ jobs:
           "$work/testing" >/dev/null
           echo "ok   testing"
 
+          testing/gen_test_registry testing/examples/production "$work/testsuite_registry.h"
+          cc -std=c11 -Wall -Wextra -Werror -I"$work" -Itesting -Ilogger \
+            testing/examples/production/main.c testing/examples/production/1_stubs.c testing/testsuite.c \
+            -o "$work/testing-production"
+          "$work/testing-production" >/dev/null
+          echo "ok   testing (production example)"
+
       - name: Check packaging, without a tag involved
         run: |
           set -euo pipefail

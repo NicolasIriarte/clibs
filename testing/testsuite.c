@@ -90,6 +90,7 @@ typedef struct {
   UserStory *user_story;
   OutputCapture test_output;
   int return_code;
+  uint64_t elapsed_us;/// @brief: Wall-clock time this one case's callback took to run.
 } TestReport;
 
 
@@ -115,6 +116,10 @@ static size_t test_failures_count = 0;
 
 /* Set when a critical case fails, which ends the run without ending the process. */
 static bool _aborted = false;
+
+/* How the suite's bookkeeping memory is taken. `alloc == NULL` means "use malloc", which is also the
+ * initial value, so a caller that never touches this gets the same behavior as before this existed. */
+static TestAllocator _allocator = { .alloc = NULL, .context = NULL };
 
 //- Private function definitions
 
@@ -154,12 +159,13 @@ static void _print_timings(const UserStory *stories, uint64_t totalUs);
 
 //- Private function implementation
 
-/* Wraps malloc with the one thing plain malloc does not say on failure: what the memory was for. */
+/* Wraps the configured allocator (malloc, absent one) with the one thing neither says on failure: what
+ * the memory was for. */
 static void *_take(size_t bytes, const char *purpose) {
   if (bytes == 0) {
     return NULL;
   }
-  void *buffer = malloc(bytes);
+  void *buffer = (_allocator.alloc != NULL) ? _allocator.alloc(bytes, _allocator.context) : malloc(bytes);
   if (buffer == NULL) {
     log_fail("No memory for %zu bytes of %s.", bytes, purpose);
   }
@@ -449,7 +455,9 @@ static void _execute_test_case(TestCase *testCase) {
    * the case before. */
   _scratch_release();
 
+  const uint64_t case_started = _wall_clock_us();
   int test_result = testCase->callback(&test_args);
+  test_report->elapsed_us = _wall_clock_us() - case_started;
 
   _capture_end(cap);
 
@@ -599,12 +607,23 @@ static void _print_test_report(void) {
     uint32_t line_num = test_passed ? test_case->line_definition : (uint32_t)test_report->return_code;
     const char *color = test_passed ? COLOR_SEAGREEN : COLOR_RED;
 
-    log_base("%s %s[%s:%u]" COLOR_DEFAULT, result, color, file_path, line_num);
+    log_base(
+      "%s %s[%s:%u]" COLOR_DEFAULT " (%lluus)",
+      result,
+      color,
+      file_path,
+      line_num,
+      (unsigned long long)test_report->elapsed_us
+    );
   }
   log_base(COLOR_WHITE "==========================================================================" COLOR_DEFAULT);
 }
 
 //- Public function implementation
+
+void test_set_allocator(TestAllocator allocator) {
+  _allocator = allocator;
+}
 
 void __add_test_case(
   UserStory *us,

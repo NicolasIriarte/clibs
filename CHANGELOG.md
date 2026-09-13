@@ -12,6 +12,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Each library now exposes its own version to consumers: `LOGGER_VERSION` (`logger.h` and
   `logger.bashrc`) and `TESTSUITE_VERSION` (`testsuite.h`), plus a top-of-file header naming this
   repository, so a dropped-in copy can be identified on its own (#5).
+- `testing`: `test_set_allocator` lets a caller replace the suite's own bookkeeping allocations (the
+  story table, the report table, the scratch arena) with a custom allocator instead of `malloc`, so it
+  can run somewhere with no heap to call it on (#7).
+- `testing`: per-case timing, shown next to each case in the summary (#7).
+- `testing`: a new `examples/production` example -- a dozen generated stub cases running through a
+  custom bump allocator, for a look at the suite's output at production-sized volume (#7).
 
 ## [0.1.0] - 2026-09-11
 

@@ -26,6 +26,13 @@ test:
     "$work/testing" >/dev/null
     echo "ok   testing"
 
+    testing/gen_test_registry testing/examples/production "$work/testsuite_registry.h"
+    cc -std=c11 -Wall -Wextra -Werror -I"$work" -Itesting -Ilogger \
+      testing/examples/production/main.c testing/examples/production/1_stubs.c testing/testsuite.c \
+      -o "$work/testing-production" >&2
+    "$work/testing-production" >/dev/null
+    echo "ok   testing (production example)"
+
 # Packages one library into a version-named tarball under `out` (dist/ by default).
 package lib version out="dist":
     #!/usr/bin/env bash

@@ -74,7 +74,10 @@ cc -I. -Ipath/to/logger -Ipath/to/generated *.c path/to/testsuite.c -o run_tests
 ```
 
 See [`examples/minimal`](examples/minimal) for a complete, runnable pair of files (one story, one
-entrypoint) and the exact commands to build and run them.
+entrypoint) and the exact commands to build and run them. See
+[`examples/production`](examples/production) for a larger run -- a dozen generated stub cases, so the
+summary and timings look like a suite with real volume rather than one case -- built with a custom
+allocator instead of the heap (see Allocation below).
 
 ## API
 
@@ -89,6 +92,7 @@ entrypoint) and the exact commands to build and run them.
 | `test_registered_case_count()` / `test_critical_case_count()` | how many cases are registered, and how many of those are critical |
 | `test_registered_user_stories()` | how many stories registered themselves |
 | `test_scratch(bytes)` | borrows a zeroed buffer from a per-case arena (see `TEST_SCRATCH_MAX`) |
+| `test_set_allocator(allocator)` | overrides how the suite allocates its own bookkeeping memory (see Allocation below) |
 
 A case receives a `const TestArguments *` with one field, `tmp_dir`: a private, already-empty directory
 it may write to, removed and recreated before every case runs.
@@ -98,6 +102,25 @@ it may write to, removed and recreated before every case runs.
 `testsuite.h` defines `TESTSUITE_VERSION`, a string naming the release of CLibs this copy was cut from
 (e.g. `"0.1.0"`), and its own top-of-file comment names this repository -- so a consumer who only has the
 dropped-in files can still tell what it is and which version it's running.
+
+## Allocation
+
+The suite's own bookkeeping (the story table, the report table, the scratch arena) comes from `malloc`
+by default. `test_set_allocator` overrides that with any allocator that hands out a slice of memory and
+never has to give it back -- what an embedded target's external-RAM driver or a fixed static arena looks
+like, for a build with no heap to call `malloc` on:
+
+```c
+static void *arena_alloc(size_t bytes, void *context) {
+  /* ... hand out `bytes` from wherever this target's memory comes from ... */
+}
+
+test_set_allocator((TestAllocator){ .alloc = arena_alloc, .context = NULL });
+```
+
+Call it before anything registers a case -- registration is what triggers the first allocation. See
+[`examples/production`](examples/production) for a complete example using a fixed-size bump allocator in
+place of the heap.
 
 ## Configuration
 
