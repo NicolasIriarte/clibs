@@ -39,19 +39,13 @@ jobs:
           bash bash-logger/examples/minimal.sh >/dev/null
           echo "ok   bash-logger"
 
-          testing/gen_test_registry testing/examples/minimal "$work/testsuite_registry.h"
-          cc -std=c11 -Wall -Wextra -Werror -I"$work" -Itesting -Ilogger \
-            testing/examples/minimal/main.c testing/examples/minimal/1_addition.c testing/testsuite.c \
-            -o "$work/testing"
-          "$work/testing" >/dev/null
+          make -C testing EXAMPLE=minimal run >/dev/null
           echo "ok   testing"
 
-          testing/gen_test_registry testing/examples/production "$work/testsuite_registry.h"
-          cc -std=c11 -Wall -Wextra -Werror -I"$work" -Itesting -Ilogger \
-            testing/examples/production/main.c testing/examples/production/1_stubs.c testing/testsuite.c \
-            -o "$work/testing-production"
-          "$work/testing-production" >/dev/null
+          make -C testing EXAMPLE=production run >/dev/null
           echo "ok   testing (production example)"
+
+          make -C testing clean >/dev/null
 
       - name: Check packaging, without a tag involved
         run: |

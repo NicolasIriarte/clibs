@@ -65,16 +65,25 @@ fast, narrowed run.
 
 `testsuite.c` needs [`../logger`](../logger)'s `logger.h` on its include path (it logs through it) and a
 generated `testsuite_registry.h` (see above; an empty one is used if none is found, so it still compiles
-with nothing to run). There is no build system bundled -- add `testsuite.c`, your story files, and your
-entrypoint to whatever you already use:
+with nothing to run). There is no build system bundled for *your own* test suite -- add `testsuite.c`,
+your story files, and your entrypoint to whatever you already use:
 
 ```sh
 cc -I. -Ipath/to/logger -Ipath/to/generated *.c path/to/testsuite.c -o run_tests
 ./run_tests
 ```
 
+To try the bundled examples themselves without writing any of that out by hand, use the `Makefile` in
+this directory:
+
+```sh
+make -C testing                        # builds examples/minimal
+make -C testing EXAMPLE=production run # builds and runs a different example
+make -C testing clean
+```
+
 See [`examples/minimal`](examples/minimal) for a complete, runnable pair of files (one story, one
-entrypoint) and the exact commands to build and run them. See
+entrypoint) and the exact commands to build and run them by hand. See
 [`examples/production`](examples/production) for a larger run -- a dozen generated stub cases, so the
 summary and timings look like a suite with real volume rather than one case -- built with a custom
 allocator instead of the heap (see Allocation below).

@@ -3,6 +3,8 @@
  *   ../../gen_test_registry . testsuite_registry.h
  *   cc -I. -I../.. -I../../../logger main.c 1_addition.c ../../testsuite.c -o minimal
  *   ./minimal
+ *
+ * Or, from the testing/ directory: `make run` (see ../../Makefile).
  */
 #include "testsuite.h"
 

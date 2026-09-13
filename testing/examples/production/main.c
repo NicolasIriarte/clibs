@@ -7,6 +7,8 @@
  *   ../../gen_test_registry . testsuite_registry.h
  *   cc -I. -I../.. -I../../../logger main.c 1_stubs.c ../../testsuite.c -o production
  *   ./production
+ *
+ * Or, from the testing/ directory: `make EXAMPLE=production run` (see ../../Makefile).
  */
 #include "testsuite.h"
 

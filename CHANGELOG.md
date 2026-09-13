@@ -18,6 +18,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `testing`: per-case timing, shown next to each case in the summary (#7).
 - `testing`: a new `examples/production` example -- a dozen generated stub cases running through a
   custom bump allocator, for a look at the suite's output at production-sized volume (#7).
+- `testing`: a `Makefile` for building and running its bundled examples (`make -C testing`,
+  `make -C testing EXAMPLE=production run`) without hand-writing the `cc`/`gen_test_registry` commands
+  (#7).
 
 ## [0.1.0] - 2026-09-11
 
