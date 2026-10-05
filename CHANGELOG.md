@@ -33,6 +33,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - `testing`: the summary names each case, and a case number is read to its last digit, so `tc100` is
   case 100 rather than case 10 (#10).
+- `testing`: the summary gives each case's time in milliseconds (`0.520 ms`) rather than microseconds,
+  and `===TIMING-TOTAL===` follows it in the same unit instead of as a bare count of microseconds. The
+  "Slowest stories" list and the per-story `===TIMING===` lines are gone: a story's time is the sum of
+  its cases' (#18).
 - `testing`: the examples return whether anything failed rather than the failure count, which an exit
   status would have wrapped to 0 at 256 failures (#10).
 

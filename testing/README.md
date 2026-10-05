@@ -99,6 +99,18 @@ entrypoint) and the exact commands to build and run them by hand. See
 summary and timings look like a suite with real volume rather than one case -- built with a custom
 allocator instead of the heap (see Allocation below).
 
+A run ends with its summary: one line per case, passes before failures, each with the time that case
+took, and then the time the run took as a whole on a line a script can grep for.
+
+```
+Test summary:
+[SUCC] [examples/production/1_stubs.c:47] us1_tc01 0.520 ms
+[SUCC] [examples/production/1_stubs.c:47] us1_tc02 1.049 ms
+[FAIL] [examples/production/1_stubs.c:52] us1_tc03 1.464 ms
+
+===TIMING-TOTAL=== 3.118 ms
+```
+
 ## API
 
 | Function / macro | Purpose |

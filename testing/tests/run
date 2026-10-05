@@ -49,7 +49,14 @@ fixture
 check "a passing run exits 0" is "$status" 0
 check "a three-digit case number is read in full" has "$out" "us1_tc100_has_three_digits: "
 summary="${out#*Test summary:}"
-check "the summary names each case" has "$summary" "] us1_tc01_finds_its_tmp_dir_empty ("
+check "the summary names each case" has "$summary" "] us1_tc01_finds_its_tmp_dir_empty "
+cases="$(grep -cE '^\[(SUCC|FAIL)\]' <<<"$summary")"
+timed="$(grep -cE '^\[(SUCC|FAIL)\] .* [0-9]+\.[0-9]{3} ms$' <<<"$summary")"
+check "the summary gives each case's time in milliseconds" is "$timed" "$cases"
+check "the run's total time follows the summary" is \
+	"$(grep -cE '^===TIMING-TOTAL=== [0-9]+\.[0-9]{3} ms$' <<<"$summary")" 1
+check "no story is timed in a section of its own" lacks "$out" "Slowest stories"
+check "no story is given a timing line of its own" lacks "$out" "===TIMING=== "
 
 fixture
 check "a case's tmp_dir is emptied before it runs again" is "$status" 0
@@ -65,7 +72,7 @@ check "a case that exits is named" has "$out" "\`us1_tc03_exits\` ended the proc
 fixture FIXTURE_NEGATIVE=1
 summary="${out#*Test summary:}"
 check "a failing run exits non-zero" isnt "$status" 0
-check "a negative return code is summarised by name" has "$summary" "] us1_tc02_returns_negative ("
+check "a negative return code is summarised by name" has "$summary" "] us1_tc02_returns_negative "
 check "a negative return code is not printed as a line number" lacks "$summary" "4294967295"
 last="$(grep -E '^\[(SUCC|FAIL)\]' <<<"$summary" | tail -n 1)"
 check "failures are summarised after every pass, whatever the story number" has "$last" "[FAIL]"

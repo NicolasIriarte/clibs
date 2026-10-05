@@ -69,13 +69,6 @@ typedef struct UserStory {
   const char *us_name;
   const char *file_path;
 
-  /* Wall-clock microseconds this story's cases have taken, accumulated rather than assigned.
-   *
-   * Accumulated because a story does not necessarily run all at once: its critical cases go in the
-   * first pass and the rest in the second, so assigning here would record only the half that finished
-   * last. */
-  uint64_t elapsed_us;
-
   TestCase test_cases[NUM_TC_PER_US];
   uint32_t registered;
 } UserStory;
@@ -164,8 +157,7 @@ static void _initialize_user_story(UserStory *user_story, const char *file_name)
 static void _scratch_release(void);
 static void _execute_test_case(TestCase *testCase);
 static void _execute_us_tests(UserStory *userStory, bool criticalPhase);
-static void _print_test_report(void);
-static void _print_timings(const UserStory *stories, uint64_t totalUs);
+static void _print_test_report(uint64_t total_us);
 
 //- Private function implementation
 
@@ -584,8 +576,6 @@ static void _execute_us_tests(UserStory *userStory, bool criticalPhase) {
   }
   _mkdir_p(output_dir);
 
-  const uint64_t started = _wall_clock_us();
-
   for (size_t i = 0; i < userStory->registered; ++i) {
     TestCase *test_case = &userStory->test_cases[i];
     if (test_case->critical != criticalPhase) {
@@ -609,52 +599,11 @@ static void _execute_us_tests(UserStory *userStory, bool criticalPhase) {
     ++test_reports_count;
   }
 
-  userStory->elapsed_us += (_wall_clock_us() - started);
 }
 
-/* How long each story took, and the run as a whole. Printed in a form something else can read as well as
- * a person: `===TIMING===` is the prefix a script would grep for. */
-static void _print_timings(const UserStory *stories, uint64_t totalUs) {
-  /* Which stories the list below has already named, so it does not name one twice. */
-  size_t shown_already[5] = { 0 };
-
-  log_base("");
-  log_base(COLOR_WHITE "Slowest stories:" COLOR_DEFAULT);
-
-  /* The five slowest, by inspection rather than by sorting a copy: this runs once at the end of a run. */
-  for (int shown = 0; shown < 5; ++shown) {
-    size_t slowest = user_story_count;
-    uint64_t best = 0;
-
-    for (size_t i = 0; i < user_story_count; ++i) {
-      bool already = false;
-      for (int j = 0; j < shown; ++j) {
-        if (shown_already[j] == i) {
-          already = true;
-          break;
-        }
-      }
-      if (!already && stories[i].elapsed_us >= best) {
-        best = stories[i].elapsed_us;
-        slowest = i;
-      }
-    }
-
-    if (slowest >= user_story_count) {
-      break;
-    }
-    shown_already[shown] = slowest;
-    log_base("  %-44s %6llu ms", stories[slowest].us_name, (unsigned long long)(best / 1000ULL));
-  }
-
-  /* One line per story, for whatever wants to record them. Not pretty, and not meant to be. */
-  for (size_t i = 0; i < user_story_count; ++i) {
-    log_base_raw("===TIMING=== %s %llu\n", stories[i].us_name, (unsigned long long)stories[i].elapsed_us);
-  }
-  log_base_raw("===TIMING-TOTAL=== %llu\n", (unsigned long long)totalUs);
-}
-
-static void _print_test_report(void) {
+/* The summary: one line per case with the time it took, then the time the run took as a whole.
+ * `===TIMING-TOTAL===` is the prefix a script would grep for. */
+static void _print_test_report(uint64_t total_us) {
   if (_reports() != NULL) {
     qsort(_reports(), test_reports_count, sizeof(TestReport), _compare_test_report);
   }
@@ -682,16 +631,17 @@ static void _print_test_report(void) {
     const char *color = test_passed ? COLOR_SEAGREEN : COLOR_RED;
 
     log_base(
-      "%s %s[%s:%u]" COLOR_DEFAULT " %s (%lluus)",
+      "%s %s[%s:%u]" COLOR_DEFAULT " %s %.3f ms",
       result,
       color,
       file_path,
       line_num,
       test_case->function_name,
-      (unsigned long long)test_report->elapsed_us
+      (double)test_report->elapsed_us / 1000.0
     );
   }
-  log_base(COLOR_WHITE "==========================================================================" COLOR_DEFAULT);
+  log_base("");
+  log_base_raw("===TIMING-TOTAL=== %.3f ms\n", (double)total_us / 1000.0);
 }
 
 //- Public function implementation
@@ -804,7 +754,6 @@ UserStory *__get_next_user_story(const char *fileName) {
   ++user_story_count;
 
   _initialize_user_story(user_story, fileName);
-  user_story->elapsed_us = 0;
 
   return user_story;
 }
@@ -828,9 +777,6 @@ int test_user_stories(void) {
   _aborted = false;
   test_reports_count = 0;
   test_failures_count = 0;
-  for (size_t i = 0; i < user_story_count; ++i) {
-    stories[i].elapsed_us = 0;
-  }
 
   /* Two passes: everything marked critical, then everything else.
    *
@@ -855,8 +801,7 @@ int test_user_stories(void) {
   }
 
   log_base("\n");
-  _print_test_report();
-  _print_timings(stories, _wall_clock_us() - run_started);
+  _print_test_report(_wall_clock_us() - run_started);
 
   if (_aborted) {
     log_fail("The run stopped early: a critical case failed, so the cases after it were not run.");
