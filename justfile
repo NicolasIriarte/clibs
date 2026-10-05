@@ -25,6 +25,9 @@ test:
     make -C testing EXAMPLE=production run >/dev/null
     echo "ok   testing (production example)"
 
+    testing/tests/run >/dev/null
+    echo "ok   testing (runner checks)"
+
     make -C testing clean >/dev/null
 
 # Packages one library into a version-named tarball under `out` (dist/ by default).

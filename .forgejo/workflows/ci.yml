@@ -45,6 +45,9 @@ jobs:
           make -C testing EXAMPLE=production run >/dev/null
           echo "ok   testing (production example)"
 
+          testing/tests/run >/dev/null
+          echo "ok   testing (runner checks)"
+
           make -C testing clean >/dev/null
 
       - name: Check packaging, without a tag involved

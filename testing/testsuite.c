@@ -30,12 +30,12 @@
 
 //- Macros constants
 
-/** @brief: How many digits a test case number has. Two is plenty for the cases within one story.
+/** @brief: Longest test case number this will read, in digits.
  *
- * There is deliberately no matching constant for the story number: it is found by looking for the `_tc`
- * that follows it rather than by assuming how many digits came before, so `us101_tc01` reads the same as
- * `us06_tc03`. */
-#define TC_ID_LEN (2)
+ * Read up to the first character that is not a digit rather than at a fixed width, so `tc100` is case
+ * 100 and not case 10. The story number is found the same way, by looking for the `_tc` that follows
+ * it, so `us101_tc01` reads the same as `us06_tc03`. */
+#define TC_ID_MAX_DIGITS (6)
 
 /** @brief: Longest story number this will read, in digits. */
 #define US_ID_MAX_DIGITS (6)
@@ -47,7 +47,10 @@
  * `NUM_TC_PER_US` is a bound on how many cases one story may register, not a measurement, and exceeding
  * it is refused rather than tolerated. */
 #define NUM_USER_STORIES (TESTSUITE_USER_STORY_COUNT + 1)
-#define NUM_TC_PER_US (16)
+#ifndef TESTSUITE_MAX_CASES_PER_STORY
+  #define TESTSUITE_MAX_CASES_PER_STORY (16)
+#endif
+#define NUM_TC_PER_US (TESTSUITE_MAX_CASES_PER_STORY)
 
 //- Type definitions
 
@@ -117,6 +120,12 @@ static size_t test_failures_count = 0;
 /* Set when a critical case fails, which ends the run without ending the process. */
 static bool _aborted = false;
 
+/* The case whose output is being captured right now, or NULL between cases. What the exit handler looks
+ * at to tell a process ending normally from one a case ended from inside. */
+static OutputCapture *_capturing = NULL;
+static const char *_capturing_name = NULL;
+static bool _exit_handler_installed = false;
+
 /* How the suite's bookkeeping memory is taken. `alloc == NULL` means "use malloc", which is also the
  * initial value, so a caller that never touches this gets the same behavior as before this existed. */
 static TestAllocator _allocator = { .alloc = NULL, .context = NULL };
@@ -137,7 +146,8 @@ static TestReport *_reports(void);
 static int _compare_user_stories(const void *a, const void *b);
 static int _compare_test_cases(const void *a, const void *b);
 static int _compare_test_report(const void *a, const void *b);
-static int _capture_begin(OutputCapture *cap);
+static bool _capture_begin(OutputCapture *cap);
+static void _report_exit_inside_case(void);
 static void _capture_end(OutputCapture *cap);
 static void _capture_free(OutputCapture *cap);
 static const char *_find_tc(const char *fnName);
@@ -305,32 +315,65 @@ static int _compare_test_report(const void *a, const void *b) {
   const TestCase *lhs_tc = lhs->test_case;
   const TestCase *rhs_tc = rhs->test_case;
 
-  // [ ret  ] [spare ] [  us  ] [  tc  ]
-  // 00000000 00000000 00000000 00000000
+  /* Passes before failures, then by story, then by case. Compared a field at a time rather than packed
+   * into one number: story and case ids are far wider than the bits a packed key could spare them. */
+  const bool lhs_failed = (lhs->return_code != 0);
+  const bool rhs_failed = (rhs->return_code != 0);
+  if (lhs_failed != rhs_failed) return lhs_failed ? 1 : -1;
 
-  uint32_t lhs_weight = ((lhs->return_code != 0) << 24) | (0 << 16) | (lhs_us->id << 8) | (lhs_tc->tc_id << 0);
-  uint32_t rhs_weight = ((rhs->return_code != 0) << 24) | (0 << 16) | (rhs_us->id << 8) | (rhs_tc->tc_id << 0);
-
-  if (lhs_weight < rhs_weight) return -1;
-  if (lhs_weight > rhs_weight) return 1;
+  if (lhs_us->id != rhs_us->id) return (lhs_us->id < rhs_us->id) ? -1 : 1;
+  if (lhs_tc->tc_id != rhs_tc->tc_id) return (lhs_tc->tc_id < rhs_tc->tc_id) ? -1 : 1;
   return 0;
 }
 
-static int _capture_begin(OutputCapture *cap) {
+/* Starts capturing stdout. Returns false if it could not, in which case stdout is left alone and the
+ * case runs with its output going straight to the terminal -- noisier, but nothing is lost. */
+static bool _capture_begin(OutputCapture *cap) {
   cap->stdout_buf = NULL;
   cap->stdout_size = 0;
-
-  cap->stdout_fd_new = open_memstream(&cap->stdout_buf, &cap->stdout_size);
   cap->stdout_fd_original = stdout;
 
+  cap->stdout_fd_new = open_memstream(&cap->stdout_buf, &cap->stdout_size);
+  if (cap->stdout_fd_new == NULL) {
+    return false;
+  }
+
   stdout = cap->stdout_fd_new;
-  return 0;
+  return true;
 }
 
 static void _capture_end(OutputCapture *cap) {
+  if (cap->stdout_fd_new == NULL) {
+    return;
+  }
   fflush(cap->stdout_fd_new);
   stdout = cap->stdout_fd_original;
   fclose(cap->stdout_fd_new);
+}
+
+/* Runs at exit. If a case is still being captured, the process is ending from inside it -- the case
+ * called exit(), or log_halt() -- and what it printed is sitting in a buffer nobody will ever read.
+ * Hand stdout back and print it, so the run ends saying which case ended it and what that case said. */
+static void _report_exit_inside_case(void) {
+  if (_capturing == NULL) {
+    return;
+  }
+  OutputCapture *cap = _capturing;
+  _capturing = NULL;
+
+  _capture_end(cap);
+
+  log_base(COLOR_RED " [EXITED]" COLOR_DEFAULT ".");
+  if (cap->stdout_size > 0) {
+    log_base("\n" COLOR_WHITE "--------------- OUTPUT START ---------------" COLOR_DEFAULT);
+    log_base_raw("%s", cap->stdout_buf);
+    log_base(COLOR_WHITE "--------------- OUTPUT END   ---------------" COLOR_DEFAULT);
+  }
+  log_fail(
+    "`%s` ended the process from inside the case; the cases after it were not run and there is no summary.",
+    _capturing_name
+  );
+  fflush(stdout);
 }
 
 static void _capture_free(OutputCapture *cap) {
@@ -369,9 +412,18 @@ static uint32_t _extract_us_id(const char *fnName) {
 }
 
 static uint32_t _extract_tc_id(const char *fnName) {
-  // Example input: 'us06_tc03'
-  const char *tc = _find_tc(fnName);
-  return _parse_num(tc + (sizeof("_tc") - 1), TC_ID_LEN);
+  // Example input: 'us06_tc03', or 'us06_tc03_what_it_checks'
+  const char *digits = _find_tc(fnName) + (sizeof("_tc") - 1);
+
+  size_t length = 0;
+  while (digits[length] >= '0' && digits[length] <= '9') {
+    ++length;
+  }
+  if (length == 0 || length > TC_ID_MAX_DIGITS) {
+    log_halt("Test case \"%s\" has invalid format. Expected a case number after '_tc'.", fnName);
+  }
+
+  return _parse_num(digits, length);
 }
 
 static TestCase _create_test_case(
@@ -430,8 +482,13 @@ static uint64_t _wall_clock_us(void) {
 static void _execute_test_case(TestCase *testCase) {
   TestArguments test_args = { 0 };
 
+  /* Removed before it is created: the same case in an earlier run used the same directory, and a case
+   * is promised an empty one. */
   char test_tmp_dir[256] = { 0 };
   snprintf(test_tmp_dir, sizeof(test_tmp_dir), "%s/%s", _proj_tmp(), testCase->function_name);
+  if (_dir_exists(test_tmp_dir)) {
+    _rmdir_r(test_tmp_dir);
+  }
   _mkdir_p(test_tmp_dir);
   test_args.tmp_dir = test_tmp_dir;
 
@@ -447,9 +504,18 @@ static void _execute_test_case(TestCase *testCase) {
     return;
   }
 
-  /* Start redirecting stdout/stderr */
+  /* Out before the case runs, not after: if the case takes the process down with it, this line is the
+   * only thing that says which case that was. */
+  fflush(stdout);
+
+  /* Start redirecting stdout */
   OutputCapture *cap = &test_report->test_output;
-  _capture_begin(cap);
+  if (_capture_begin(cap)) {
+    _capturing = cap;
+    _capturing_name = testCase->function_name;
+  } else {
+    log_warn("Could not capture the output of `%s`; it will print as it runs.", testCase->function_name);
+  }
 
   /* A clean arena to work in: a case that borrows scratch should not find some of it already spent by
    * the case before. */
@@ -459,6 +525,7 @@ static void _execute_test_case(TestCase *testCase) {
   int test_result = testCase->callback(&test_args);
   test_report->elapsed_us = _wall_clock_us() - case_started;
 
+  _capturing = NULL;
   _capture_end(cap);
 
   test_report->test_case = testCase;
@@ -530,8 +597,11 @@ static void _execute_us_tests(UserStory *userStory, bool criticalPhase) {
 
     TestReport *test_report = (_reports() != NULL) ? &_reports()[test_reports_count] : NULL;
     if (test_report == NULL) {
-      log_fail("No memory for the suite's reports; nothing will be recorded.");
-      return;
+      /* Counted as a failure: a case that did not run has not passed, and a run that skipped cases
+       * must not come back green. */
+      log_fail("No memory for the suite's reports; `%s` was not run.", test_case->function_name);
+      ++test_failures_count;
+      continue;
     }
     test_report->user_story = userStory;
 
@@ -546,7 +616,7 @@ static void _execute_us_tests(UserStory *userStory, bool criticalPhase) {
  * a person: `===TIMING===` is the prefix a script would grep for. */
 static void _print_timings(const UserStory *stories, uint64_t totalUs) {
   /* Which stories the list below has already named, so it does not name one twice. */
-  static size_t shown_already[5] = { 0 };
+  size_t shown_already[5] = { 0 };
 
   log_base("");
   log_base(COLOR_WHITE "Slowest stories:" COLOR_DEFAULT);
@@ -604,15 +674,20 @@ static void _print_test_report(void) {
     const char *file_path = user_story->file_path;
 
     const char *result = test_passed ? COLOR_GREEN "[SUCC]" COLOR_DEFAULT : COLOR_RED "[FAIL]" COLOR_DEFAULT;
-    uint32_t line_num = test_passed ? test_case->line_definition : (uint32_t)test_report->return_code;
+    /* A failing case returns the line it failed on (FORCE_FAILURE), which is the line worth jumping to.
+     * A case that returns anything else -- a negative code, say -- has no such line, so it points at
+     * where the case was registered instead. */
+    uint32_t line_num =
+      (test_report->return_code > 0) ? (uint32_t)test_report->return_code : test_case->line_definition;
     const char *color = test_passed ? COLOR_SEAGREEN : COLOR_RED;
 
     log_base(
-      "%s %s[%s:%u]" COLOR_DEFAULT " (%lluus)",
+      "%s %s[%s:%u]" COLOR_DEFAULT " %s (%lluus)",
       result,
       color,
       file_path,
       line_num,
+      test_case->function_name,
       (unsigned long long)test_report->elapsed_us
     );
   }
@@ -638,7 +713,20 @@ void __add_test_case(
     log_halt("Trying to register invalid function '%s' into UserStory id=%u", test_case.function_name, us->id);
   }
   if (us->registered >= NUM_TC_PER_US) {
-    log_halt("No room for more test cases. Insertion of \"%s\" failed.", test_case.function_name);
+    log_halt(
+      "No room for more test cases (TESTSUITE_MAX_CASES_PER_STORY is %d). Insertion of \"%s\" failed.",
+      NUM_TC_PER_US,
+      test_case.function_name
+    );
+  }
+  for (uint32_t i = 0; i < us->registered; ++i) {
+    if (us->test_cases[i].tc_id == test_case.tc_id) {
+      log_halt(
+        "Test cases \"%s\" and \"%s\" have the same case number.",
+        us->test_cases[i].function_name,
+        test_case.function_name
+      );
+    }
   }
 
   us->test_cases[us->registered] = test_case;
@@ -730,8 +818,19 @@ int test_user_stories(void) {
 
   qsort(stories, user_story_count, sizeof(stories[0]), _compare_user_stories);
 
+  if (!_exit_handler_installed) {
+    _exit_handler_installed = (atexit(_report_exit_inside_case) == 0);
+  }
+
+  /* Each run starts from nothing, so a second call in the same process reports only itself rather than
+   * appending to -- and eventually running off the end of -- the first one's reports. */
   const uint64_t run_started = _wall_clock_us();
   _aborted = false;
+  test_reports_count = 0;
+  test_failures_count = 0;
+  for (size_t i = 0; i < user_story_count; ++i) {
+    stories[i].elapsed_us = 0;
+  }
 
   /* Two passes: everything marked critical, then everything else.
    *

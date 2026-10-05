@@ -28,7 +28,11 @@ void register_user_story4(void) {
 
 The function-name suffix (`4`) must match the file's own leading number exactly, digit for digit --
 `04_x.c` pairs with `register_user_story04`, not `register_user_story4`. Each case's own name
-(`usNN_tcMM`) is checked against both the story id and, via `_tc`, its own case number.
+(`usNN_tcMM`) is checked against both the story id and, via `_tc`, its own case number. Two cases in one
+story may not share a case number.
+
+A story holds at most 16 cases. Build `testsuite.c` with `-DTESTSUITE_MAX_CASES_PER_STORY=<n>` to raise
+that.
 
 `critical` answers one question: if this fails, are the results of everything after it meaningless? A
 critical case runs first and a critical failure ends the run there, so the first line of a failing run is
@@ -53,9 +57,12 @@ int main(void) {
   TESTSUITE_USER_STORIES(__REGISTER_ONE)
 #undef __REGISTER_ONE
 
-  return test_user_stories();
+  return test_user_stories() != 0;
 }
 ```
+
+`test_user_stories()` returns how many cases failed. Return whether that is non-zero rather than the
+count itself: an exit status keeps only its low eight bits, so 256 failures would exit 0.
 
 Adding a story is then just adding a file -- nothing to register by hand and nothing to merge-conflict
 over. `TESTSUITE_STORIES=4,7 gen_test_registry test ...` builds a registry for only those stories, for a
@@ -81,6 +88,9 @@ make -C testing                        # builds examples/minimal
 make -C testing EXAMPLE=production run # builds and runs a different example
 make -C testing clean
 ```
+
+The `Makefile` looks for `logger.h` in `../logger`, which is where it is in this repository. For a copy
+of this library unpacked on its own, say where the logger is: `make LOGGER_DIR=path/to/logger run`.
 
 See [`examples/minimal`](examples/minimal) for a complete, runnable pair of files (one story, one
 entrypoint) and the exact commands to build and run them by hand. See
@@ -127,7 +137,8 @@ static void *arena_alloc(size_t bytes, void *context) {
 test_set_allocator((TestAllocator){ .alloc = arena_alloc, .context = NULL });
 ```
 
-Call it before anything registers a case -- registration is what triggers the first allocation. See
+Call it before anything registers a case -- registration is what triggers the first allocation. What
+the allocator returns must be aligned for any object, as `malloc`'s is. See
 [`examples/production`](examples/production) for a complete example using a fixed-size bump allocator in
 place of the heap.
 
@@ -136,7 +147,8 @@ place of the heap.
 Two environment variables, both optional:
 
 - `TESTSUITE_TMP_DIR` -- where each case's private `tmp_dir` is created under. Defaults to
-  `/tmp/testsuite`.
+  `/tmp/testsuite`. Each case's directory is named after the case and emptied before it runs, so two
+  suites running at once -- or two projects with a case of the same name -- should each set their own.
 - `TESTSUITE_OUTPUT_DIR` -- where each story's run directory is created. Defaults to `build/tests`,
   relative to the current working directory.
 

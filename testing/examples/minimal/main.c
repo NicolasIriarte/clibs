@@ -16,5 +16,6 @@ int main(void) {
   TESTSUITE_USER_STORIES(__REGISTER_ONE)
 #undef __REGISTER_ONE
 
-  return test_user_stories();
+  /* Not the count itself: an exit status keeps only its low eight bits, so 256 failures would exit 0. */
+  return test_user_stories() != 0;
 }

@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# Checks the runner against a suite built to misbehave, rather than only that an example exits 0.
+#
+# Usage: testing/tests/run
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+testing="$here/.."
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+CC="${CC:-cc}"
+read -ra cflags <<<"${CFLAGS:--std=c11 -Wall -Wextra -Werror}"
+
+failures=0
+
+# check <description> <command...>: passes if the command does.
+check() {
+	local description="$1"
+	shift
+	if "$@"; then
+		echo "ok   $description"
+	else
+		echo "FAIL $description"
+		failures=$((failures + 1))
+	fi
+}
+
+has() { [[ "$1" == *"$2"* ]]; }
+lacks() { [[ "$1" != *"$2"* ]]; }
+is() { [[ "$1" == "$2" ]]; }
+isnt() { [[ "$1" != "$2" ]]; }
+
+# Runs the fixture with the given FIXTURE_* variables set. Leaves its output in $out and its status in
+# $status. Colors are stripped so the assertions read as plain text.
+fixture() {
+	out="$(env "$@" TESTSUITE_TMP_DIR="$work/tmp" TESTSUITE_OUTPUT_DIR="$work/out" "$work/fixture" 2>&1)"
+	status=$?
+	# shellcheck disable=SC2001  # a pattern with an escape in it reads better as sed
+	out="$(sed 's/\x1b\[[0-9;]*m//g' <<<"$out")"
+}
+
+"$testing/gen_test_registry" "$here/fixture" "$work/testsuite_registry.h" || exit 1
+"$CC" "${cflags[@]}" -I"$work" -I"$testing" -I"$testing/../logger" \
+	"$here"/fixture/*.c "$testing/testsuite.c" -o "$work/fixture" || exit 1
+
+fixture
+check "a passing run exits 0" is "$status" 0
+check "a three-digit case number is read in full" has "$out" "us1_tc100_has_three_digits: "
+summary="${out#*Test summary:}"
+check "the summary names each case" has "$summary" "] us1_tc01_finds_its_tmp_dir_empty ("
+
+fixture
+check "a case's tmp_dir is emptied before it runs again" is "$status" 0
+
+fixture FIXTURE_NO_REPORTS=1
+check "a run that could not record its cases exits non-zero" isnt "$status" 0
+
+fixture FIXTURE_EXIT=1
+check "a case that exits keeps its exit status" is "$status" 3
+check "a case that exits still has its output printed" has "$out" "said before exiting"
+check "a case that exits is named" has "$out" "\`us1_tc03_exits\` ended the process"
+
+fixture FIXTURE_NEGATIVE=1
+summary="${out#*Test summary:}"
+check "a failing run exits non-zero" isnt "$status" 0
+check "a negative return code is summarised by name" has "$summary" "] us1_tc02_returns_negative ("
+check "a negative return code is not printed as a line number" lacks "$summary" "4294967295"
+last="$(grep -E '^\[(SUCC|FAIL)\]' <<<"$summary" | tail -n 1)"
+check "failures are summarised after every pass, whatever the story number" has "$last" "[FAIL]"
+
+fixture FIXTURE_NEGATIVE=1 FIXTURE_TWICE=1
+check "a second run reports only itself" has "$out" "second run failures=1"
+
+fixture FIXTURE_DUPLICATE=1
+check "a repeated case number is refused" has "$out" "have the same case number"
+check "a repeated case number ends the run" isnt "$status" 0
+
+# The bundled Makefile, against a copy of this library with its logger somewhere else.
+mkdir -p "$work/alone"
+cp -r "$testing" "$work/alone/testing"
+cp -r "$testing/../logger" "$work/alone/elsewhere"
+make -C "$work/alone/testing" clean >/dev/null
+
+out="$(make -C "$work/alone/testing" run 2>&1)"
+status=$?
+check "the Makefile says so when it cannot find logger.h" has "$out" "Pass LOGGER_DIR="
+check "and fails" isnt "$status" 0
+
+out="$(make -C "$work/alone/testing" LOGGER_DIR=../elsewhere run 2>&1)"
+check "the Makefile builds against a logger named by LOGGER_DIR" is "$?" 0
+
+story="$work/alone/testing/examples/minimal/2_extra.c"
+sed -e 's/us1_/us2_/g' -e 's/register_user_story1/register_user_story2/' \
+	"$work/alone/testing/examples/minimal/1_addition.c" >"$story"
+out="$(make -C "$work/alone/testing" LOGGER_DIR=../elsewhere run 2>&1)"
+check "adding a story file runs it" has "$out" "2_extra.c"
+rm "$story"
+out="$(make -C "$work/alone/testing" LOGGER_DIR=../elsewhere run 2>&1)"
+check "removing a story file rebuilds" is "$?" 0
+check "and no longer runs it" lacks "$out" "2_extra.c"
+
+if [[ "$failures" -ne 0 ]]; then
+	echo "$failures check(s) failed"
+	exit 1
+fi

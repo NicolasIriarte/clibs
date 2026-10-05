@@ -57,7 +57,7 @@ extern "C" {
   __add_test_case(user_story, #fnName, fnName, acceptance_criteria, critical, __LINE__)
 
 #define REGISTER_USER_STORY(id)                                                                                        \
-  extern void register_user_story##id();                                                                               \
+  extern void register_user_story##id(void);                                                                            \
   register_user_story##id()
 
 //- Type definitions
@@ -73,7 +73,10 @@ typedef struct UserStory UserStory;
 
 /** @brief: One allocation for the suite's own bookkeeping (the story table, the report table, the
  * scratch arena). Every such allocation lives for the whole run and is never freed, so this is
- * deliberately alloc-only. */
+ * deliberately alloc-only.
+ *
+ * What it returns must be aligned for any object, as `malloc`'s is (`_Alignof(max_align_t)`): the suite
+ * stores structs in it. */
 typedef void *(*TestAllocFn)(size_t bytes, void *context);
 
 typedef struct {
@@ -112,7 +115,11 @@ void __add_test_case(
 /**
  * @brief Runs every registered test case and prints the summary.
  *
- * @return The number of test cases that failed (0 if all passed).
+ * May be called more than once; each call runs everything again and reports only that run.
+ *
+ * @return The number of test cases that failed (0 if all passed). A case that could not be run counts as
+ * failed. Do not return this from `main` as it is: an exit status keeps only its low eight bits, so 256
+ * failures would exit 0. Return `test_user_stories() != 0` instead.
  */
 int test_user_stories(void);
 
