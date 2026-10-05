@@ -45,6 +45,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - `testing`: two cases with the same case number in one story are refused at registration (#10).
 - `testing`: the bundled `Makefile` rebuilds when a story file is removed (#10).
 
+### Fixed
+
+- `logger`: `log_debug_vars` printed a `char` as a control character padded to dozens of columns, an
+  `unsigned long long` through the `unsigned long` printer, and a negative `signed char`/`short`
+  sign-extended to `int`; each now prints at its own width (#11).
+- `logger`: `log_misc` took an expression as its level without parenthesising it, so a conditional
+  level always printed (#11).
+- `logger`: `log_debug_vars` still printed its variables with `LOGGER_INFO_ENABLED` at 0 (#11).
+- `bash-logger`: a color exported as an empty string was replaced by its default instead of disabling
+  that color, and a log function called with no arguments aborted a script running under `set -u`
+  (#11).
+
 ## [0.1.0] - 2026-09-11
 
 ### Added

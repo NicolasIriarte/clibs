@@ -29,6 +29,9 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 /* ---------------------------------------------------------------------------
  * Version. Not a knob, and not overridable from logger_config.h: this is which release of CLibs this
@@ -85,10 +88,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 
 /**
@@ -201,7 +200,7 @@ extern "C" {
  */
 #define log_misc(level, fmt, ...)                                                                                      \
   do {                                                                                                                 \
-    if (LOGGER_MISC_ENABLED && level <= LOGGER_TRACE_LEVEL) {                                                          \
+    if (LOGGER_MISC_ENABLED && (level) <= LOGGER_TRACE_LEVEL) {                                                        \
       printf(                                                                                                          \
         COLOR_WHITE "[MISC] " COLOR_SEAGREEN "[%s:%d]" COLOR_DEFAULT " - " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__ \
       );                                                                                                               \
@@ -250,8 +249,12 @@ extern "C" {
 /* =========================================================================
  * Internal Helper Printers (static inline: zero symbol leakage / overhead)
  * ========================================================================= */
+/* `size` is the width in hex digits of the type the value came from, which for `signed char` and `short`
+ * is narrower than the `int` they arrive as. Masked to that width, so -1 reads 0xFF rather than
+ * sign-extended to 0xFFFFFFFF. */
 static inline void _dbg_print_int(const char *name, int val, int size) {
-  log_base("%s = %d (0x%0*X)", name, val, size, val);
+  const unsigned int mask = (size < (int)(sizeof(unsigned int) * 2)) ? ((1U << (size * 4)) - 1U) : ~0U;
+  log_base("%s = %d (0x%0*X)", name, val, size, (unsigned int)val & mask);
 }
 static inline void _dbg_print_uint(const char *name, unsigned int val, int size) {
   log_base("%s = %u (0x%0*X)", name, val, size, val);
@@ -265,15 +268,18 @@ static inline void _dbg_print_ulong(const char *name, unsigned long val, int siz
 static inline void _dbg_print_longlong(const char *name, long long val, int size) {
   log_base("%s = %lld (0x%0*llx)", name, val, size, val);
 }
+static inline void _dbg_print_ulonglong(const char *name, unsigned long long val, int size) {
+  log_base("%s = %llu (0x%0*llx)", name, val, size, val);
+}
 static inline void _dbg_print_double(const char *name, double val, int size) {
   (void)size; /* Width is meaningless for a float, but the dispatch table's signature is shared. */
   log_base("%s = %f", name, val);
 }
 static inline void _dbg_print_char(const char *name, char val, int size) {
-  log_base("%s = '%c' (0x%0*hx)", name, size, val, val);
+  log_base("%s = '%c' (0x%0*X)", name, val, size, (unsigned int)(unsigned char)val);
 }
 static inline void _dbg_print_bool(const char *name, bool val, int size) {
-  log_base("%s = %s (0x%0*hx)", name, val ? "true" : "false", size, val);
+  log_base("%s = %s (0x%0*X)", name, val ? "true" : "false", size, (unsigned int)val);
 }
 static inline void _dbg_print_str(const char *name, const char *val, int size) {
   (void)size; /* Width is meaningless for a string, but the dispatch table's signature is shared. */
@@ -351,7 +357,7 @@ PRINTABLE_TYPES
     unsigned long: _dbg_print_ulong,                                                                                   \
                                                                                                                        \
     long long: _dbg_print_longlong,                                                                                    \
-    unsigned long long: _dbg_print_ulong,                                                                              \
+    unsigned long long: _dbg_print_ulonglong,                                                                          \
                                                                                                                        \
     float: _dbg_print_double,                                                                                          \
     double: _dbg_print_double,                                                                                         \
@@ -371,7 +377,7 @@ PRINTABLE_TYPES
     default: _dbg_print_unknown)("  " #x, x, sizeof(x) * 2)
 
 /* =========================================================================
- * Variadic Argument Iterator (Supports up to 16 arguments cleanly)
+ * Variadic Argument Iterator (Supports up to 8 arguments cleanly)
  * ========================================================================= */
 #define ARG_COUNT(...) ARG_COUNT_(__VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1)
 #define ARG_COUNT_(_1, _2, _3, _4, _5, _6, _7, _8, N, ...) N
@@ -406,6 +412,10 @@ PRINTABLE_TYPES
  * ========================================================================= */
 #define log_debug_vars(msg, ...)                                                                                       \
   do {                                                                                                                 \
+    /* Gated as a whole: the variables are part of the INFO message. */                                                \
+    if (!(LOGGER_INFO_ENABLED)) {                                                                                      \
+      break;                                                                                                           \
+    }                                                                                                                  \
     /* Special case of a single variable */                                                                            \
     if (ARG_COUNT(__VA_ARGS__) == 1) {                                                                                 \
       log_info_wnl(msg);                                                                                               \

@@ -15,9 +15,13 @@ test:
     cc -std=c11 -Wall -Wextra -Werror -Ilogger logger/examples/minimal.c -o "$work/logger" >&2
     "$work/logger" >/dev/null
     echo "ok   logger"
+    logger/tests/run >/dev/null
+    echo "ok   logger (output checks)"
 
     bash bash-logger/examples/minimal.sh >/dev/null
     echo "ok   bash-logger"
+    bash-logger/tests/run >/dev/null
+    echo "ok   bash-logger (output checks)"
 
     make -C testing EXAMPLE=minimal run >/dev/null
     echo "ok   testing"

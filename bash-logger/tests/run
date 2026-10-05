@@ -1,0 +1,53 @@
+#!/bin/bash
+#
+# Checks what logger.bashrc actually prints, rather than only that its example exits 0.
+#
+# Usage: bash-logger/tests/run
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+logger="$here/../logger.bashrc"
+
+failures=0
+
+# check <description> <command...>: passes if the command does.
+check() {
+	local description="$1"
+	shift
+	if "$@"; then
+		echo "ok   $description"
+	else
+		echo "FAIL $description"
+		failures=$((failures + 1))
+	fi
+}
+
+has() { [[ "$1" == *"$2"* ]]; }
+lacks() { [[ "$1" != *"$2"* ]]; }
+
+red=$'\033[1;31m'
+
+# Each case runs in a shell of its own, so what one exports is not there for the next.
+out="$(bash -c 'source "$1"; log_fail "boom %d" 7' _ "$logger")"
+check "log_fail is red by default" has "$out" "$red"
+check "log_fail formats its arguments" has "$out" "boom 7"
+
+out="$(bash -c 'export COLOR_RED=""; source "$1"; log_fail "boom"' _ "$logger")"
+check "an empty COLOR_RED disables that color" lacks "$out" "$red"
+check "an empty COLOR_RED still prints the message" has "$out" "[FAIL] "
+
+out="$(bash -uc 'source "$1"; log_info; echo "still running"' _ "$logger" 2>&1 || true)"
+check "log_info with no arguments survives set -u" has "$out" "still running"
+check "log_info with no arguments prints an empty message" has "$out" "[INFO] "
+
+out="$(bash -c 'source "$1"; log_misc 100 "too detailed"; log_misc 10 "detailed enough"' _ "$logger")"
+check "log_misc drops a level above the trace level" lacks "$out" "too detailed"
+check "log_misc prints a level at or below it" has "$out" "detailed enough"
+
+out="$(bash -c 'source "$1"; log_halt "stop"; echo "not reached"' _ "$logger" || true)"
+check "log_halt ends the script" lacks "$out" "not reached"
+
+if [[ "$failures" -ne 0 ]]; then
+	echo "$failures check(s) failed"
+	exit 1
+fi
