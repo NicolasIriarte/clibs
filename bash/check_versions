@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Checks that a tag names the version the libraries themselves report.
+#
+# Usage: bash/check_versions <tag> [repository-root]
+#          e.g. bash/check_versions v0.2.0
+#
+# Exits 0 if LOGGER_VERSION (logger.h and logger.bashrc) and TESTSUITE_VERSION (testsuite.h) all equal the
+# tag's version, or 1 having said which do not.
+#
+# The version is written in three files and bumped by hand when a release is cut. A tag pushed with one
+# of them left behind publishes a tarball that misreports itself to whoever drops it into a project, and
+# a published release is not something that gets quietly corrected -- so the release should fail instead.
+
+set -euo pipefail
+
+TAG="${1:?usage: check_versions <tag> [repository-root]}"
+ROOT="${2:-.}"
+
+# Tags are written v0.2.0; the libraries report 0.2.0. A revision tag (v0.2.0-1) is the same release cut
+# again for a non-functional change, so it is held to the version it revises.
+WANTED="${TAG#v}"
+WANTED="${WANTED%%-*}"
+
+[[ "$WANTED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+	printf 'check_versions: "%s" is not a vX.Y.Z or vX.Y.Z-N tag\n' "$TAG" >&2
+	exit 1
+}
+
+# The quoted value of one version definition in one file, or nothing if it is not there.
+__version_in() {
+	local file="$1" name="$2"
+
+	sed -n -E "s/^(#define|export)[[:space:]]+${name}[[:space:]=]+\"([^\"]*)\".*/\2/p" "$file" | head -n 1
+}
+
+mismatches=0
+
+__check() {
+	local file="$ROOT/$1" name="$2" found
+
+	[[ -f "$file" ]] || {
+		printf 'check_versions: %s does not exist\n' "$file" >&2
+		mismatches=$((mismatches + 1))
+		return
+	}
+
+	found="$(__version_in "$file" "$name")"
+	if [[ "$found" != "$WANTED" ]]; then
+		printf 'check_versions: %s has %s "%s"; tag %s wants "%s"\n' "$1" "$name" "$found" "$TAG" "$WANTED" >&2
+		mismatches=$((mismatches + 1))
+	fi
+}
+
+__check logger/logger.h LOGGER_VERSION
+__check bash-logger/logger.bashrc LOGGER_VERSION
+__check testing/testsuite.h TESTSUITE_VERSION
+
+[[ "$mismatches" -eq 0 ]] || exit 1
+
+printf 'check_versions: every library reports %s\n' "$WANTED"

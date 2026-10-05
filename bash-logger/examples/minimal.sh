@@ -4,6 +4,7 @@
 #   ./minimal.sh
 set -euo pipefail
 
+# shellcheck source=bash-logger/logger.bashrc
 source "$(dirname "${BASH_SOURCE[0]}")/../logger.bashrc"
 
 log_info "starting up"

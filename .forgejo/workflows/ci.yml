@@ -15,15 +15,29 @@ jobs:
   # of fetching it.
   test:
     runs-on: ubuntu-latest
+    # A passing run takes well under a minute; the limit is so that a step that hangs fails the job
+    # rather than holding the runner.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install a C compiler
+      - name: Install a C compiler and a shell linter
         run: |
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends build-essential
+          apt-get install -y -qq --no-install-recommends build-essential shellcheck
+
+      # Every shell file this repository ships or releases with. Listed rather than globbed: none of them
+      # has an extension to glob on.
+      - name: Lint the shell scripts
+        run: |
+          shellcheck -x bash-logger/logger.bashrc bash-logger/examples/minimal.sh \
+            bash/cap_output bash/changelog_section bash/check_versions bash/tests/run \
+            testing/gen_test_registry logger/tests/run bash-logger/tests/run testing/tests/run
+
+      - name: Check the tooling in bash/, without a tag involved
+        run: bash/tests/run
 
       - name: Build and run every library's example
         run: |
@@ -73,6 +87,47 @@ jobs:
             echo "ok   $lib-v9.9.9.tar.gz"
           done
 
+      # The same examples again, built to trip on what a plain build lets through: a read past the end of
+      # a buffer or an overflowing shift only fails an ordinary run if it happens to crash it. Leak
+      # detection is off because the suite never frees its bookkeeping, on purpose, and because the leak
+      # checker needs ptrace, which a CI container does not always grant.
+      #
+      # Non-PIE, because AddressSanitizer in this image's gcc 12 fails at random on a kernel that
+      # randomises addresses over 32 bits, which this runner's does: wherever a position-independent
+      # executable lands, the shadow memory can collide with it, and the program prints
+      # AddressSanitizer:DEADLYSIGNAL in a loop without ever reaching main -- about one start in four,
+      # of any sanitized binary however trivial. A fixed load address takes the collision away. Each run
+      # is still under `timeout` and bash/cap_output, so that anything of the kind fails within seconds
+      # and a few hundred lines, rather than holding the runner and filling its log.
+      - name: Build and run the examples under sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          SANITIZED: >-
+            -std=c11 -Wall -Wextra -Werror -g -fsanitize=address,undefined
+            -fno-sanitize-recover=undefined -fno-pie -no-pie
+        run: |
+          set -euo pipefail
+
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+
+          # bounded <command...>: at most two minutes and 2,000 lines, where a passing run takes a
+          # second and prints under a hundred.
+          bounded() { bash/cap_output 2000 timeout 120 "$@" >/dev/null; }
+
+          cc $SANITIZED -Ilogger logger/examples/minimal.c -o "$work/logger"
+          bounded "$work/logger"
+          echo "ok   logger"
+
+          make -C testing clean >/dev/null
+          bounded make -C testing CFLAGS="$SANITIZED" EXAMPLE=minimal run
+          echo "ok   testing"
+
+          bounded make -C testing CFLAGS="$SANITIZED" EXAMPLE=production run
+          echo "ok   testing (production example)"
+
+          make -C testing clean >/dev/null
+
   # Publishes the release a tag names: one tarball per library, and the changelog's own words about it.
   release:
     needs: [test]
@@ -90,17 +145,30 @@ jobs:
 
       # Before packaging anything: a tag whose version was never written down should fail here rather
       # than publish a release with an empty page, which nobody will go back and fix.
+      #
+      # The tag reaches every step below through the environment rather than being pasted into the
+      # script: a tag name is text someone typed, and text pasted into a shell script is run as one.
       - name: The changelog has something to say about this version
-        run: bash/changelog_section "${{ github.ref_name }}" > /tmp/release-notes.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash/changelog_section "$TAG" > /tmp/release-notes.md
+
+      # A tarball that reports a different version from the tag it was published under misleads whoever
+      # drops it into a project, so a version left unbumped fails here rather than being released.
+      - name: The libraries report the version being tagged
+        env:
+          TAG: ${{ github.ref_name }}
+        run: bash/check_versions "$TAG"
 
       - name: Package every library
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           mkdir -p dist
           for lib in logger bash-logger testing; do
-            tar --transform "s,^$lib,$lib-${{ github.ref_name }}," \
-                -czf "dist/$lib-${{ github.ref_name }}.tar.gz" "$lib"
-            echo "wrote dist/$lib-${{ github.ref_name }}.tar.gz"
+            tar --transform "s,^$lib,$lib-$TAG," -czf "dist/$lib-$TAG.tar.gz" "$lib"
+            echo "wrote dist/$lib-$TAG.tar.gz"
           done
 
       - name: Publish the release

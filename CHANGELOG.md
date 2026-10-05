@@ -23,6 +23,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (#7).
 - `testing`: `TESTSUITE_MAX_CASES_PER_STORY` raises the 16-cases-per-story limit at build time, and the
   bundled `Makefile` takes `LOGGER_DIR` for a copy of the library unpacked away from its logger (#10).
+- CI lints the shell scripts with shellcheck, runs the examples under AddressSanitizer and
+  UndefinedBehaviorSanitizer, and refuses to publish a tag whose version the libraries do not report
+  (`bash/check_versions`) (#13).
+- `bash/cap_output` runs a command with its output cut off, and failed, past a number of lines, so a
+  program printing in a loop cannot fill a CI job's log (#13).
 
 ### Changed
 
@@ -44,9 +49,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (#10).
 - `testing`: two cases with the same case number in one story are refused at registration (#10).
 - `testing`: the bundled `Makefile` rebuilds when a story file is removed (#10).
-
-### Fixed
-
 - `logger`: `log_debug_vars` printed a `char` as a control character padded to dozens of columns, an
   `unsigned long long` through the `unsigned long` printer, and a negative `signed char`/`short`
   sign-extended to `int`; each now prints at its own width (#11).

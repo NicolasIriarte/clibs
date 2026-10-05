@@ -6,6 +6,7 @@ Cuts vX.Y.Z. The scope is whatever is merged to `main` and unreleased at the poi
 # Test
 
 - [ ] `just test_package` passes, so the tag publishes what it should rather than an empty page.
+- [ ] `just check_versions vX.Y.Z` passes, so the release job will not refuse the tag.
 - [ ] `CHANGELOG.md` has something under `[Unreleased]` before this closes it out -- a tag with nothing
       to say fails the release job rather than publishing a page with no notes.
 - [ ] CI is green on the commit being tagged -- a tag is never pushed ahead of it.

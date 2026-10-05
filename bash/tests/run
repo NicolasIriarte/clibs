@@ -1,0 +1,105 @@
+#!/bin/bash
+#
+# Checks the tooling in bash/ against copies it is free to break, without a tag involved.
+#
+# Usage: bash/tests/run
+set -uo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+root="$here/../.."
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+failures=0
+
+# passes <description> <command...> / refuses <description> <command...>
+passes() {
+	local description="$1"
+	shift
+	if "$@" >/dev/null 2>&1; then echo "ok   $description"; else
+		echo "FAIL $description"
+		failures=$((failures + 1))
+	fi
+}
+refuses() {
+	local description="$1"
+	shift
+	if "$@" >/dev/null 2>&1; then
+		echo "FAIL $description"
+		failures=$((failures + 1))
+	else echo "ok   $description"; fi
+}
+
+# A copy of the three files that carry a version, all set to 1.2.3 whatever the real ones say.
+mkdir -p "$work/logger" "$work/bash-logger" "$work/testing"
+sed -E 's/(LOGGER_VERSION[ =]+")[^"]*/\11.2.3/' "$root/logger/logger.h" >"$work/logger/logger.h"
+sed -E 's/(LOGGER_VERSION[ =]+")[^"]*/\11.2.3/' "$root/bash-logger/logger.bashrc" >"$work/bash-logger/logger.bashrc"
+sed -E 's/(TESTSUITE_VERSION[ =]+")[^"]*/\11.2.3/' "$root/testing/testsuite.h" >"$work/testing/testsuite.h"
+
+passes "check_versions accepts the tag the libraries report" "$root/bash/check_versions" v1.2.3 "$work"
+passes "check_versions holds a revision tag to the release it revises" "$root/bash/check_versions" v1.2.3-1 "$work"
+refuses "check_versions refuses a tag the libraries do not report" "$root/bash/check_versions" v1.2.4 "$work"
+refuses "check_versions refuses a tag that is not a version" "$root/bash/check_versions" vnext "$work"
+
+sed -i -E 's/(TESTSUITE_VERSION[ =]+")[^"]*/\11.2.2/' "$work/testing/testsuite.h"
+refuses "check_versions refuses when one library was left behind" "$root/bash/check_versions" v1.2.3 "$work"
+
+cat >"$work/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [Unreleased]
+
+## [1.2.3] - 2026-01-01
+
+### Fixed
+
+- Something.
+
+## [1.2.2] - 2025-12-01
+CHANGELOG
+
+passes "changelog_section finds a version's section" "$root/bash/changelog_section" v1.2.3 "$work/CHANGELOG.md"
+passes "changelog_section gives a revision its release's notes" \
+	"$root/bash/changelog_section" v1.2.3-1 "$work/CHANGELOG.md"
+refuses "changelog_section refuses a version with nothing written" \
+	"$root/bash/changelog_section" v1.2.2 "$work/CHANGELOG.md"
+refuses "changelog_section refuses a version with no section" \
+	"$root/bash/changelog_section" v9.9.9 "$work/CHANGELOG.md"
+
+# is <description> <actual> <expected>
+is() {
+	if [[ "$2" == "$3" ]]; then echo "ok   $1"; else
+		echo "FAIL $1 (got $2)"
+		failures=$((failures + 1))
+	fi
+}
+
+cap="$root/bash/cap_output"
+
+output="$("$cap" 3 printf 'one\ntwo\nthree\n')"
+is "cap_output passes output at the cap through unchanged" "$?:$output" $'0:one\ntwo\nthree'
+
+"$cap" 10 sh -c 'echo failing; exit 7' >/dev/null
+is "cap_output gives the command's own status back" "$?" 7
+
+output="$("$cap" 10 sh -c 'echo to stderr >&2')"
+is "cap_output keeps standard error, and counts it" "$output" "to stderr"
+
+output="$("$cap" 3 printf 'one\ntwo\nthree\nfour\n' 2>/dev/null)"
+is "cap_output cuts one line over the cap, and fails" "$?:$output" $'1:one\ntwo\nthree'
+
+# The case that matters: a command that would print forever. Under a far longer timeout than a pass
+# needs, so a cap that only cut the output -- rather than stopping the command -- fails here instead of
+# passing slowly.
+start=$SECONDS
+lines="$("$cap" 1000 timeout 60 yes AddressSanitizer:DEADLYSIGNAL 2>/dev/null | wc -l)"
+is "cap_output stops a runaway at the cap" "$lines" 1000
+passes "cap_output stops a runaway in seconds" test "$((SECONDS - start))" -lt 10
+
+refuses "cap_output refuses a cap of zero" "$cap" 0 true
+refuses "cap_output refuses a missing command" "$cap" 10
+
+if [[ "$failures" -ne 0 ]]; then
+	echo "$failures check(s) failed"
+	exit 1
+fi

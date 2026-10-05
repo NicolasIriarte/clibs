@@ -37,6 +37,8 @@ This project uses [`just`](https://just.systems) as its command runner:
 just           # list recipes
 just test      # build and run every library's example
 just test_package  # check that `just package` produces what it should
+just test_tooling  # check the release scripts under bash/
+just lint          # shellcheck every shell file
 ```
 
 See [`GUIDELINES.md`](GUIDELINES.md) for how this project is worked on -- branch and PR conventions,

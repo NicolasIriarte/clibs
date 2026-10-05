@@ -75,3 +75,17 @@ test_package:
 
       echo "ok   $lib-v9.9.9.tar.gz"
     done
+
+# Lints every shell file this repository ships or releases with.
+lint:
+    shellcheck -x bash-logger/logger.bashrc bash-logger/examples/minimal.sh \
+      bash/cap_output bash/changelog_section bash/check_versions bash/tests/run \
+      testing/gen_test_registry logger/tests/run bash-logger/tests/run testing/tests/run
+
+# Checks the tooling in bash/ against copies it is free to break.
+test_tooling:
+    bash/tests/run
+
+# Checks that a tag names the version every library reports, as the release job does before publishing.
+check_versions tag:
+    bash/check_versions "{{tag}}"
