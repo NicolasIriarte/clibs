@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ###################################################################################################################
-# logger.bashrc -- part of CLibs (<forgejo-url>/nico/CLibs). See LOGGER_VERSION below for the exact
+# logger.bashrc -- part of CLibs (http://100.125.208.18:3000/nico/CLibs). See LOGGER_VERSION below for the exact
 # release this copy was cut from.
 #
 # A small level-gated logger for bash scripts. The bash half of ../logger/logger.h -- same function names, same

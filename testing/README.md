@@ -1,7 +1,8 @@
 # testing
 
-A small user-story-based test runner for C. Host-only (Linux/macOS): it is not meant to run cases
-inside an embedded target.
+A small user-story-based test runner for C. Host-only, and the host is Linux with glibc: it is not meant
+to run cases inside an embedded target, and other hosts (macOS, musl) are not supported --
+`gen_test_registry` wants GNU `find` and bash 4, and capturing a case's output assigns to `stdout`.
 
 ## Model
 
@@ -110,6 +111,7 @@ allocator instead of the heap (see Allocation below).
 | `test_run_aborted()` | whether a critical failure stopped the run early |
 | `test_registered_case_count()` / `test_critical_case_count()` | how many cases are registered, and how many of those are critical |
 | `test_registered_user_stories()` | how many stories registered themselves |
+| `test_stories_heap_bytes()` | how many bytes the story table occupies, or 0 if it was never allocated |
 | `test_scratch(bytes)` | borrows a zeroed buffer from a per-case arena (see `TEST_SCRATCH_MAX`) |
 | `test_set_allocator(allocator)` | overrides how the suite allocates its own bookkeeping memory (see Allocation below) |
 
@@ -154,10 +156,11 @@ Two environment variables, both optional:
 
 ## Differences from NicOs's test suite
 
-This is a close port of NicOs's `test/test_suite.c`, keeping its public API and the `usNN_tcMM.c`
-auto-registration convention. What did not travel, because none of it exists outside NicOs's firmware:
+This is a close port of NicOs's `test/test_suite.c`, keeping its public API, the `NN_*.c` story-file
+convention and the `usNN_tcMM` case names. What did not travel, because none of it exists outside NicOs's firmware:
 
-- The external-RAM arena driver (`workspace_dvr`) -- replaced with plain heap allocation.
+- The external-RAM arena driver (`workspace_dvr`) -- the suite allocates from the heap by default, and
+  `test_set_allocator` is where a driver like it plugs back in (see Allocation above).
 - The ESP32 build path -- this is host-only from here on.
 - `storage_fixture`, which reset NicOs's own app state (bookmarks, clock, wifi credentials, screens)
   between cases -- there is no equivalent here, since there is no such state to reset. A case that needs

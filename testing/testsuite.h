@@ -1,8 +1,8 @@
 #pragma once
 
 /**
- * testsuite.h -- part of CLibs (<forgejo-url>/nico/CLibs). See TESTSUITE_VERSION below for the exact
- * release this copy was cut from.
+ * testsuite.h -- part of CLibs (http://100.125.208.18:3000/nico/CLibs). See TESTSUITE_VERSION below for
+ * the exact release this copy was cut from.
  *
  * A small user-story-based test runner for C.
  *
@@ -12,8 +12,9 @@
  * so adding a story means adding a file -- nothing to register by hand and nothing to merge-conflict
  * over.
  *
- * Host-only by design: this runs wherever a C compiler and a POSIX-ish libc do (Linux, macOS). It is not
- * meant to run cases inside an embedded target.
+ * Host-only by design, and the host is Linux with glibc: capturing a case's output assigns to `stdout`,
+ * which glibc allows and other libcs need not, and gen_test_registry wants GNU find and bash 4. It is
+ * not meant to run cases inside an embedded target.
  */
 
 //- System includes

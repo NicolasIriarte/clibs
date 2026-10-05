@@ -26,7 +26,15 @@ MUST NOT is not negotiable, SHOULD / SHOULD NOT is a default that a stated reaso
    implements, never by its own -- issues and pull requests share one number sequence, so a bare
    number that could mean either is ambiguous, and rule 4 guarantees every pull request has an issue
    number to be cited by.
-8. Tags MUST follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
+8. Tags MUST be of the form `vX.Y.Z`, where `X.Y.Z` follows
+   [semantic versioning](https://semver.org/spec/v2.0.0.html), and MUST match the version the libraries
+   report (`LOGGER_VERSION`, `TESTSUITE_VERSION`).
+9. A tag MAY carry a revision suffix, `vX.Y.Z-N`. It is the same release as `vX.Y.Z`, cut again for a
+   change that is not functional: a pipeline fix, a README update, a changelog clarification. This is
+   deliberately not semantic versioning's reading of that suffix, which would make it a pre-release
+   sorting before `vX.Y.Z` -- there are no pre-releases here. A revision has no changelog section of its
+   own and is announced with the notes of the release it revises (see `bash/changelog_section`), and
+   the libraries keep reporting `X.Y.Z`.
 
 ## Issues
 
@@ -42,7 +50,9 @@ MUST NOT is not negotiable, SHOULD / SHOULD NOT is a default that a stated reaso
 
 ## Forgejo access
 
-This repo uses the same `claude` Forgejo account and SSH key.
+The instance is at <http://100.125.208.18:3000>, and this repository is `nico/CLibs` on it. An AI model
+acts on it through the `claude` Forgejo account and its SSH key, which are shared with the other
+repositories on the instance rather than set up per repository.
 
 The access token lives in one file outside every repository, at `~/.env.forgejo` (mode 0600). It is
 never copied into a repository and never read out of a sibling project's working tree. In a fresh
