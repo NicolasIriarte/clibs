@@ -41,7 +41,7 @@
  * Version. Not a knob, and not overridable from logger_config.h: this is which release of CLibs this
  * copy of logger.h was cut from, for a consumer that needs to know what it's running.
  * ------------------------------------------------------------------------- */
-#define LOGGER_VERSION "0.2.0"
+#define LOGGER_VERSION "0.3.0"
 
 /* ---------------------------------------------------------------------------
  * Defaults. Every one of these is overridable from logger_config.h.

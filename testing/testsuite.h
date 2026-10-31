@@ -29,7 +29,7 @@ extern "C" {
 //- Macros constants
 
 /** @brief: Which release of CLibs this copy of testsuite.h was cut from. Not a knob. */
-#define TESTSUITE_VERSION "0.2.0"
+#define TESTSUITE_VERSION "0.3.0"
 
 #define FORCE_FAILURE() return __LINE__
 

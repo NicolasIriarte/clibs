@@ -18,7 +18,7 @@
 ###################################################################################################################
 
 # Not a knob: which release of CLibs this copy was cut from, for a consumer that needs to know what it's running.
-export LOGGER_VERSION="0.2.0"
+export LOGGER_VERSION="0.3.0"
 
 # `-` rather than `:-`: a color exported as an empty string is a request for no color, not for the default.
 export COLOR_SEAGREEN="${COLOR_SEAGREEN-\x1b[38;2;0;182;182m}" # RGB color #00b6b6
