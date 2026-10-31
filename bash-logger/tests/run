@@ -28,11 +28,11 @@ lacks() { [[ "$1" != *"$2"* ]]; }
 red=$'\033[1;31m'
 
 # Each case runs in a shell of its own, so what one exports is not there for the next.
-out="$(bash -c 'source "$1"; log_fail "boom %d" 7' _ "$logger")"
+out="$(bash -c 'source "$1"; log_fail "boom %d" 7' _ "$logger" 2>&1)"
 check "log_fail is red by default" has "$out" "$red"
 check "log_fail formats its arguments" has "$out" "boom 7"
 
-out="$(bash -c 'export COLOR_RED=""; source "$1"; log_fail "boom"' _ "$logger")"
+out="$(bash -c 'export COLOR_RED=""; source "$1"; log_fail "boom"' _ "$logger" 2>&1)"
 check "an empty COLOR_RED disables that color" lacks "$out" "$red"
 check "an empty COLOR_RED still prints the message" has "$out" "[FAIL] "
 
@@ -44,8 +44,22 @@ out="$(bash -c 'source "$1"; log_misc 100 "too detailed"; log_misc 10 "detailed 
 check "log_misc drops a level above the trace level" lacks "$out" "too detailed"
 check "log_misc prints a level at or below it" has "$out" "detailed enough"
 
-out="$(bash -c 'source "$1"; log_halt "stop"; echo "not reached"' _ "$logger" || true)"
+out="$(bash -c 'source "$1"; log_halt "stop"; echo "not reached"' _ "$logger" 2>&1 || true)"
 check "log_halt ends the script" lacks "$out" "not reached"
+
+every_level() {
+	bash -c 'source "$1"; log_info "i"; log_warn "w"; log_fail "f"; log_misc 10 "m"; log_halt "h"' _ "$logger"
+}
+out="$(every_level 2>/dev/null || true)"
+errors="$(every_level 2>&1 >/dev/null || true)"
+for level in INFO WARN MISC; do
+	check "$level prints to stdout" has "$out" "[$level] "
+	check "$level prints nothing to stderr" lacks "$errors" "[$level] "
+done
+for level in FAIL HALT; do
+	check "$level prints to stderr" has "$errors" "[$level] "
+	check "$level prints nothing to stdout" lacks "$out" "[$level] "
+done
 
 if [[ "$failures" -ne 0 ]]; then
 	echo "$failures check(s) failed"

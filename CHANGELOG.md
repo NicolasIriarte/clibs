@@ -7,6 +7,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- `logger`, `bash-logger`: `log_fail` and `log_halt` print to stderr rather than stdout. Every other
+  level stays on stdout. In the C logger those two flush stdout first, so a log taking both streams
+  keeps its lines in order (#22).
+- `testing`: a case's stderr is captured along with its stdout, in the order it happened, so its
+  `log_fail` lines stay part of its output. The run's report stays on stdout; a failure of the run
+  itself, such as a critical case stopping it, goes to stderr (#22).
+
+### Fixed
+
+- `testing`: a case that aborts, as a failed `assert()` does, no longer takes its captured output with
+  it (#22).
+
 ## [0.2.0] - 2026-10-05
 
 ### Added

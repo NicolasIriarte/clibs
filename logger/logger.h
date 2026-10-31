@@ -6,6 +6,10 @@
  *
  * A small level-gated logger, with a `_Generic`-based variable printer.
  *
+ * log_fail() and log_halt() print to stderr, and everything else to stdout. Those two flush stdout first,
+ * because stdout is buffered once it is not a terminal: a log taking both streams would otherwise hold a
+ * failure ahead of the lines that led to it.
+ *
  * Standalone on purpose: drop this file into another project and it compiles as-is, with every knob
  * below falling back to a sensible default. The defaults below match this project's own bash logger
  * (see ../bash-logger/logger.bashrc), so a C program and a shell script sitting side by side print the
@@ -155,7 +159,7 @@ extern "C" {
  * @brief Logs a failure message.
  *
  * Prints a formatted message with FAIL level, including file and line context,
- * if failure logging is enabled.
+ * if failure logging is enabled. Goes to stderr, after flushing stdout.
  *
  * @param[in] fmt Format string.
  * @param[in] ... Optional arguments for formatting.
@@ -164,8 +168,13 @@ extern "C" {
 #define log_fail(fmt, ...)                                                                                             \
   do {                                                                                                                 \
     if (LOGGER_FAIL_ENABLED) {                                                                                         \
-      printf(                                                                                                          \
-        COLOR_RED "[FAIL] " COLOR_SEAGREEN "[%s:%d]" COLOR_DEFAULT " - " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__   \
+      fflush(stdout);                                                                                                  \
+      fprintf(                                                                                                         \
+        stderr,                                                                                                        \
+        COLOR_RED "[FAIL] " COLOR_SEAGREEN "[%s:%d]" COLOR_DEFAULT " - " fmt "\n",                                     \
+        __FILE__,                                                                                                      \
+        __LINE__,                                                                                                      \
+        ##__VA_ARGS__                                                                                                  \
       );                                                                                                               \
     }                                                                                                                  \
   } while (0)
@@ -173,7 +182,8 @@ extern "C" {
 /**
  * @brief Logs a critical error and halts execution.
  *
- * Prints a formatted message with HALT level and terminates the program.
+ * Prints a formatted message with HALT level and terminates the program. Goes to stderr, after flushing
+ * stdout.
  *
  * @param[in] fmt Format string.
  * @param[in] ... Optional arguments for formatting.
@@ -181,8 +191,13 @@ extern "C" {
  */
 #define log_halt(fmt, ...)                                                                                             \
   do {                                                                                                                 \
-    printf(                                                                                                            \
-      COLOR_RED "[HALT] " COLOR_SEAGREEN "[%s:%d]" COLOR_DEFAULT " - " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__     \
+    fflush(stdout);                                                                                                    \
+    fprintf(                                                                                                           \
+      stderr,                                                                                                          \
+      COLOR_RED "[HALT] " COLOR_SEAGREEN "[%s:%d]" COLOR_DEFAULT " - " fmt "\n",                                       \
+      __FILE__,                                                                                                        \
+      __LINE__,                                                                                                        \
+      ##__VA_ARGS__                                                                                                    \
     );                                                                                                                 \
     exit(1);                                                                                                           \
   } while (0)

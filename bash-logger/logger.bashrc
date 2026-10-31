@@ -13,6 +13,8 @@
 #
 # There is no log_base here and none is wanted: it exists in the C logger to print without decoration, which is
 # what plain printf already is.
+#
+# log_fail and log_halt print to stderr, and everything else to stdout.
 ###################################################################################################################
 
 # Not a knob: which release of CLibs this copy was cut from, for a consumer that needs to know what it's running.
@@ -51,14 +53,14 @@ log_fail() {
 	local fmt="${1-}"
 	shift || true
 	printf "${COLOR_RED}[FAIL] ${COLOR_SEAGREEN}[%s:%d]${COLOR_DEFAULT} - ${fmt}\n" \
-		"${BASH_SOURCE[1]-}" "${BASH_LINENO[0]}" "$@"
+		"${BASH_SOURCE[1]-}" "${BASH_LINENO[0]}" "$@" >&2
 }
 
 log_halt() {
 	local fmt="${1-}"
 	shift || true
 	printf "${COLOR_RED}[HALT] ${COLOR_SEAGREEN}[%s:%d]${COLOR_DEFAULT} - ${fmt}\n" \
-		"${BASH_SOURCE[1]-}" "${BASH_LINENO[0]}" "$@"
+		"${BASH_SOURCE[1]-}" "${BASH_LINENO[0]}" "$@" >&2
 	exit 1
 }
 

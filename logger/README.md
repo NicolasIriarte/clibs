@@ -20,6 +20,9 @@ int main(void) {
 
 See [`examples/minimal.c`](examples/minimal.c) for a runnable version, including `log_debug_vars()`.
 
+`log_fail` and `log_halt` print to `stderr`, and everything else to `stdout`. Those two flush `stdout`
+first, so a log taking both streams keeps its lines in order.
+
 ## API
 
 | Macro | Purpose |

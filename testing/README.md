@@ -2,7 +2,8 @@
 
 A small user-story-based test runner for C. Host-only, and the host is Linux with glibc: it is not meant
 to run cases inside an embedded target, and other hosts (macOS, musl) are not supported --
-`gen_test_registry` wants GNU `find` and bash 4, and capturing a case's output assigns to `stdout`.
+`gen_test_registry` wants GNU `find` and bash 4, and capturing a case's output assigns to `stdout` and
+`stderr`.
 
 ## Model
 
@@ -98,6 +99,10 @@ entrypoint) and the exact commands to build and run them by hand. See
 [`examples/production`](examples/production) for a larger run -- a dozen generated stub cases, so the
 summary and timings look like a suite with real volume rather than one case -- built with a custom
 allocator instead of the heap (see Allocation below).
+
+What a case prints to `stdout` or `stderr`, its log lines included, is captured in the order it happened
+and shown only if the case fails. The run's own report goes to `stdout`, and a failure of the run itself,
+such as a critical case stopping it, to `stderr`.
 
 A run ends with its summary: one line per case, passes before failures, each with the time that case
 took, and then the time the run took as a whole on a line a script can grep for.

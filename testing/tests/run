@@ -10,6 +10,9 @@ testing="$here/.."
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# FIXTURE_ABORT brings the process down on purpose; that is no reason to leave a core file behind.
+ulimit -c 0
+
 CC="${CC:-cc}"
 read -ra cflags <<<"${CFLAGS:--std=c11 -Wall -Wextra -Werror}"
 
@@ -32,10 +35,15 @@ lacks() { [[ "$1" != *"$2"* ]]; }
 is() { [[ "$1" == "$2" ]]; }
 isnt() { [[ "$1" != "$2" ]]; }
 
+# Runs the fixture with the given FIXTURE_* variables set, in the environment every run here wants.
+run_fixture() {
+	env "$@" TESTSUITE_TMP_DIR="$work/tmp" TESTSUITE_OUTPUT_DIR="$work/out" "$work/fixture"
+}
+
 # Runs the fixture with the given FIXTURE_* variables set. Leaves its output in $out and its status in
 # $status. Colors are stripped so the assertions read as plain text.
 fixture() {
-	out="$(env "$@" TESTSUITE_TMP_DIR="$work/tmp" TESTSUITE_OUTPUT_DIR="$work/out" "$work/fixture" 2>&1)"
+	out="$(run_fixture "$@" 2>&1)"
 	status=$?
 	# shellcheck disable=SC2001  # a pattern with an escape in it reads better as sed
 	out="$(sed 's/\x1b\[[0-9;]*m//g' <<<"$out")"
@@ -58,8 +66,22 @@ check "the run's total time follows the summary" is \
 check "no story is timed in a section of its own" lacks "$out" "Slowest stories"
 check "no story is given a timing line of its own" lacks "$out" "===TIMING=== "
 
+check "a passing case's log lines are not printed" lacks "$out" "logged second"
+
+check "the report is on stdout" has "$(run_fixture 2>/dev/null)" "Test summary:"
+check "a passing run writes nothing to stderr" is "$(run_fixture 2>&1 >/dev/null)" ""
+
 fixture
 check "a case's tmp_dir is emptied before it runs again" is "$status" 0
+
+fixture FIXTURE_LOGS=1
+output="${out#*OUTPUT START}"
+output="${output%%OUTPUT END*}"
+check "a failing case's output keeps its log lines, in order" is \
+	"$(grep -oE 'printed first|logged second|printed third' <<<"$output" | tr '\n' ',')" \
+	"printed first,logged second,printed third,"
+check "a failing case's log lines do not escape the capture" is \
+	"$(run_fixture FIXTURE_LOGS=1 2>&1 >/dev/null)" ""
 
 fixture FIXTURE_NO_REPORTS=1
 check "a run that could not record its cases exits non-zero" isnt "$status" 0
@@ -68,6 +90,12 @@ fixture FIXTURE_EXIT=1
 check "a case that exits keeps its exit status" is "$status" 3
 check "a case that exits still has its output printed" has "$out" "said before exiting"
 check "a case that exits is named" has "$out" "\`us1_tc03_exits\` ended the process"
+check "and is named after the output it printed" has "${out#*OUTPUT END}" "ended the process"
+
+fixture FIXTURE_ABORT=1
+check "a case that aborts keeps the process's status" is "$status" 134
+check "a case that aborts still has its output printed" has "$out" "said before aborting"
+check "a failed assert says what failed" has "$out" "aborted on purpose"
 
 fixture FIXTURE_NEGATIVE=1
 summary="${out#*Test summary:}"

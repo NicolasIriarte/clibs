@@ -56,6 +56,31 @@ out="$("$work/quiet")"
 refuse "log_debug_vars prints no heading with INFO disabled" "$out" " - vars"
 refuse "log_debug_vars prints no variables with INFO disabled" "$out" " = "
 
+# streams ends in log_halt, which exits 1.
+"$CC" "${cflags[@]}" "${no_color[@]}" -I"$here/.." "$here/streams.c" -o "$work/streams"
+out="$("$work/streams" 2>/dev/null || true)"
+errors="$("$work/streams" 2>&1 >/dev/null || true)"
+
+expect "log_info prints to stdout" "$out" "[INFO] [$here/streams.c:11] - info"
+expect "log_warn prints to stdout" "$out" "[WARN] [$here/streams.c:13] - warn"
+expect "log_misc prints to stdout" "$out" "[MISC] [$here/streams.c:15] - misc"
+expect "log_base prints to stdout" "$out" "base"
+expect "log_base_raw prints to stdout" "$out" "raw"
+expect "log_debug_vars prints to stdout" "$out" "  opaque = <unknown type>"
+refuse "log_fail prints nothing to stdout" "$out" "[FAIL]"
+refuse "log_halt prints nothing to stdout" "$out" "[HALT]"
+
+expect "log_fail prints to stderr" "$errors" "[FAIL] [$here/streams.c:14] - fail"
+expect "log_halt prints to stderr" "$errors" "[HALT] [$here/streams.c:21] - halt"
+others="$(grep -cvE '^\[(FAIL|HALT)\] ' <<<"$errors" || true)"
+expect "only log_fail and log_halt print to stderr" "$others" "0"
+
+# Into a pipe, where stdout is buffered and stderr is not: each has to flush what came before it.
+out="$("$work/streams" 2>&1 || true)"
+expect "log_fail comes after what stdout already holds" "${out%%\[FAIL\]*}" \
+	"[WARN] [$here/streams.c:13] - warn"
+expect "log_halt comes after what stdout already holds" "${out%%\[HALT\]*}" "base"
+
 if [[ "$failures" -ne 0 ]]; then
 	echo "$failures check(s) failed"
 	exit 1

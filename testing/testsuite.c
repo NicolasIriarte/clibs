@@ -20,6 +20,7 @@
 
 //- System includes
 #include <ftw.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,10 +76,11 @@ typedef struct UserStory {
 
 
 typedef struct {
-  char *stdout_buf;
-  size_t stdout_size;
-  FILE *stdout_fd_new;
+  char *output_buf;
+  size_t output_size;
+  FILE *output_fd;
   FILE *stdout_fd_original;
+  FILE *stderr_fd_original;
 } OutputCapture;
 
 typedef struct {
@@ -141,6 +143,7 @@ static int _compare_test_cases(const void *a, const void *b);
 static int _compare_test_report(const void *a, const void *b);
 static bool _capture_begin(OutputCapture *cap);
 static void _report_exit_inside_case(void);
+static void _report_abort_inside_case(int signum);
 static void _capture_end(OutputCapture *cap);
 static void _capture_free(OutputCapture *cap);
 static const char *_find_tc(const char *fnName);
@@ -318,34 +321,39 @@ static int _compare_test_report(const void *a, const void *b) {
   return 0;
 }
 
-/* Starts capturing stdout. Returns false if it could not, in which case stdout is left alone and the
+/* Starts capturing stdout and stderr, into one buffer so that what a case prints and what it logs stay
+ * in the order they happened. Returns false if it could not, in which case both are left alone and the
  * case runs with its output going straight to the terminal -- noisier, but nothing is lost. */
 static bool _capture_begin(OutputCapture *cap) {
-  cap->stdout_buf = NULL;
-  cap->stdout_size = 0;
+  cap->output_buf = NULL;
+  cap->output_size = 0;
   cap->stdout_fd_original = stdout;
+  cap->stderr_fd_original = stderr;
 
-  cap->stdout_fd_new = open_memstream(&cap->stdout_buf, &cap->stdout_size);
-  if (cap->stdout_fd_new == NULL) {
+  cap->output_fd = open_memstream(&cap->output_buf, &cap->output_size);
+  if (cap->output_fd == NULL) {
     return false;
   }
 
-  stdout = cap->stdout_fd_new;
+  stdout = cap->output_fd;
+  stderr = cap->output_fd;
   return true;
 }
 
 static void _capture_end(OutputCapture *cap) {
-  if (cap->stdout_fd_new == NULL) {
+  if (cap->output_fd == NULL) {
     return;
   }
-  fflush(cap->stdout_fd_new);
+  fflush(cap->output_fd);
   stdout = cap->stdout_fd_original;
-  fclose(cap->stdout_fd_new);
+  stderr = cap->stderr_fd_original;
+  fclose(cap->output_fd);
 }
 
 /* Runs at exit. If a case is still being captured, the process is ending from inside it -- the case
  * called exit(), or log_halt() -- and what it printed is sitting in a buffer nobody will ever read.
- * Hand stdout back and print it, so the run ends saying which case ended it and what that case said. */
+ * Hand the streams back and print it, so the run ends saying which case ended it and what that case
+ * said. */
 static void _report_exit_inside_case(void) {
   if (_capturing == NULL) {
     return;
@@ -356,9 +364,9 @@ static void _report_exit_inside_case(void) {
   _capture_end(cap);
 
   log_base(COLOR_RED " [EXITED]" COLOR_DEFAULT ".");
-  if (cap->stdout_size > 0) {
+  if (cap->output_size > 0) {
     log_base("\n" COLOR_WHITE "--------------- OUTPUT START ---------------" COLOR_DEFAULT);
-    log_base_raw("%s", cap->stdout_buf);
+    log_base_raw("%s", cap->output_buf);
     log_base(COLOR_WHITE "--------------- OUTPUT END   ---------------" COLOR_DEFAULT);
   }
   log_fail(
@@ -368,12 +376,28 @@ static void _report_exit_inside_case(void) {
   fflush(stdout);
 }
 
+/* Runs when a case aborts, a failed assert() say, because abort() runs no exit handlers: what the case
+ * said would go down with the buffer, and with it the failed assertion itself on a glibc whose assert()
+ * writes through `stderr`. Only flushes and writes, rather than doing what the exit handler does, because
+ * a process aborting over a corrupted heap cannot be asked to free anything. Returning lets the abort
+ * carry on. */
+static void _report_abort_inside_case(int signum) {
+  (void)signum;
+  if (_capturing == NULL) {
+    return;
+  }
+  fflush(_capturing->output_fd);
+  const ssize_t written = write(STDOUT_FILENO, _capturing->output_buf, _capturing->output_size);
+  (void)written;
+}
+
 static void _capture_free(OutputCapture *cap) {
-  free(cap->stdout_buf);
-  cap->stdout_buf = NULL;
-  cap->stdout_size = 0;
-  cap->stdout_fd_new = NULL;
+  free(cap->output_buf);
+  cap->output_buf = NULL;
+  cap->output_size = 0;
+  cap->output_fd = NULL;
   cap->stdout_fd_original = NULL;
+  cap->stderr_fd_original = NULL;
 }
 
 // Where the '_tc' sits in a name like 'us06_tc03' or 'us101_tc01'.
@@ -500,7 +524,7 @@ static void _execute_test_case(TestCase *testCase) {
    * only thing that says which case that was. */
   fflush(stdout);
 
-  /* Start redirecting stdout */
+  /* Start capturing what the case prints */
   OutputCapture *cap = &test_report->test_output;
   if (_capture_begin(cap)) {
     _capturing = cap;
@@ -529,9 +553,9 @@ static void _execute_test_case(TestCase *testCase) {
   } else {
     ++test_failures_count;
     log_base(COLOR_RED " [FAILURE]" COLOR_DEFAULT " (Exit code: " COLOR_RED "%d" COLOR_DEFAULT ").", test_result);
-    if (cap->stdout_size > 0) {
+    if (cap->output_size > 0) {
       log_base("\n" COLOR_WHITE "--------------- OUTPUT START ---------------" COLOR_DEFAULT);
-      log_base_raw("%s", cap->stdout_buf);
+      log_base_raw("%s", cap->output_buf);
       log_base(COLOR_WHITE "--------------- OUTPUT END   ---------------" COLOR_DEFAULT);
     } else {
       log_base("Test didn't emit any output.");
@@ -769,6 +793,7 @@ int test_user_stories(void) {
 
   if (!_exit_handler_installed) {
     _exit_handler_installed = (atexit(_report_exit_inside_case) == 0);
+    signal(SIGABRT, _report_abort_inside_case);
   }
 
   /* Each run starts from nothing, so a second call in the same process reports only itself rather than

@@ -17,6 +17,8 @@ log_fail "could not open %s" "$file"
 
 See [`examples/minimal.sh`](examples/minimal.sh) for a runnable version.
 
+`log_fail` and `log_halt` print to `stderr`, and everything else to `stdout`.
+
 ## API
 
 | Function | Purpose |

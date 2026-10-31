@@ -12,9 +12,9 @@
  * so adding a story means adding a file -- nothing to register by hand and nothing to merge-conflict
  * over.
  *
- * Host-only by design, and the host is Linux with glibc: capturing a case's output assigns to `stdout`,
- * which glibc allows and other libcs need not, and gen_test_registry wants GNU find and bash 4. It is
- * not meant to run cases inside an embedded target.
+ * Host-only by design, and the host is Linux with glibc: capturing a case's output assigns to `stdout`
+ * and `stderr`, which glibc allows and other libcs need not, and gen_test_registry wants GNU find and
+ * bash 4. It is not meant to run cases inside an embedded target.
  */
 
 //- System includes
