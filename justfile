@@ -34,12 +34,14 @@ test:
 
     make -C testing clean >/dev/null
 
-# Packages one library into a version-named tarball under `out` (dist/ by default).
+# Packages one library into a version-named tarball under `out` (dist/ by default), with the repository's
+# LICENSE inside it: a tarball holds nothing else from the root.
 package lib version out="dist":
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p "{{out}}"
-    tar --transform "s,^{{lib}},{{lib}}-{{version}}," -czf "{{out}}/{{lib}}-{{version}}.tar.gz" "{{lib}}"
+    tar --transform "s,^{{lib}},{{lib}}-{{version}}," --transform "s,^LICENSE,{{lib}}-{{version}}/LICENSE," \
+      -czf "{{out}}/{{lib}}-{{version}}.tar.gz" "{{lib}}" LICENSE
 
 # Packages every library at once.
 package_all version out="dist":
@@ -68,6 +70,8 @@ test_package:
       [[ -s "$archive" ]] || { echo "missing $archive"; exit 1; }
 
       listing="$(tar -tzf "$archive")"
+      echo "$listing" | grep -qx "$lib-v9.9.9/LICENSE" \
+        || { echo "$archive is missing its LICENSE"; exit 1; }
       echo "$listing" | grep -qx "$lib-v9.9.9/README.md" \
         || { echo "$archive is missing its README"; exit 1; }
       echo "$listing" | grep -q "$lib-v9.9.9/examples/" \

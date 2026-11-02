@@ -76,9 +76,12 @@ jobs:
           trap 'rm -rf "$work"' EXIT
 
           for lib in logger bash-logger testing; do
-            tar --transform "s,^$lib,$lib-v9.9.9," -czf "$work/$lib-v9.9.9.tar.gz" "$lib"
+            tar --transform "s,^$lib,$lib-v9.9.9," --transform "s,^LICENSE,$lib-v9.9.9/LICENSE," \
+              -czf "$work/$lib-v9.9.9.tar.gz" "$lib" LICENSE
 
             listing="$(tar -tzf "$work/$lib-v9.9.9.tar.gz")"
+            echo "$listing" | grep -qx "$lib-v9.9.9/LICENSE" \
+              || { echo "$lib-v9.9.9.tar.gz is missing its LICENSE"; exit 1; }
             echo "$listing" | grep -qx "$lib-v9.9.9/README.md" \
               || { echo "$lib-v9.9.9.tar.gz is missing its README"; exit 1; }
             echo "$listing" | grep -q "$lib-v9.9.9/examples/" \
@@ -160,6 +163,8 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: bash/check_versions "$TAG"
 
+      # Each tarball packs one library directory and nothing else from the root, so the repository's
+      # LICENSE is added to it by name.
       - name: Package every library
         env:
           TAG: ${{ github.ref_name }}
@@ -167,7 +172,8 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           for lib in logger bash-logger testing; do
-            tar --transform "s,^$lib,$lib-$TAG," -czf "dist/$lib-$TAG.tar.gz" "$lib"
+            tar --transform "s,^$lib,$lib-$TAG," --transform "s,^LICENSE,$lib-$TAG/LICENSE," \
+              -czf "dist/$lib-$TAG.tar.gz" "$lib" LICENSE
             echo "wrote dist/$lib-$TAG.tar.gz"
           done
 
